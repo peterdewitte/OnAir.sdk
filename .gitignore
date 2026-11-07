@@ -1,0 +1,6 @@
+# binaries (third-party): only the scripts and the lock files are published
+/sdk/
+/cache/
+*.tar.zst
+*.stage.*
+__pycache__/
