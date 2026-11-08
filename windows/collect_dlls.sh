@@ -7,10 +7,11 @@
 #   collect_dlls.sh <program.exe or .dll> [<sysroot>] [<extra.dll name> ...]
 #     <sysroot>   default: $WIN_SYSROOT, else sysroots/x86_64-w64-mingw32 next to this script (the SDK)
 #     extra       DLLs to copy as well, with what they need: those the program loads at run time and so not in its import
-#                 table, e.g. OnAir's delay-loaded FFmpeg (avcodec-63.dll ...); a glob such as 'avcodec-*.dll' works
+#                 table, e.g. the radio DLLs OnAir's native drivers load by name (librtlsdr.dll ...); a glob such as
+#                 'libhamlib-*.dll' works
 # Needs x86_64-w64-mingw32-objdump (binutils-mingw-w64-x86-64). GNU objdump also lists the delay-import table.
 set -euo pipefail
-[ $# -ge 1 ] || { sed -n '4,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[ $# -ge 1 ] || { sed -n '4,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 EXE=$1; shift
 HERE=$(cd "$(dirname "$0")" && pwd)
 SYSROOT=${1:-${WIN_SYSROOT:-$HERE/sysroots/x86_64-w64-mingw32}}; [ $# -gt 0 ] && shift

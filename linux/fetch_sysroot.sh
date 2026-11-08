@@ -11,7 +11,7 @@
 # lock file can be replayed later), checked (the InRelease files' GPG signature against Ubuntu's archive key pinned below,
 # the Packages indices' sha256 from InRelease, each .deb's sha256 from the index) and unpacked (dpkg-deb -x; nothing is
 # installed or run) into one folder. Only what building and linking needs is kept: headers, libraries, pkg-config and
-# CMake files, the licences. FFmpeg is Ubuntu's (the GPL build; owner, 2026-11-07). Ubuntu's versions are the SDK's
+# CMake files, the licences. OnAir's own libraries are built by sources/build_sources.sh. Ubuntu's versions are the SDK's
 # minimum versions: the lock file also records them for the libraries in MINIMUM, and common/check_versions.py checks
 # that the Windows and macOS sysroots are not older.
 #
@@ -33,13 +33,14 @@ export LC_ALL=C
 # ---- the packages of the sysroot: edit this list (their dependencies come along on their own) -------------------------
 PACKAGES=(
   libc6-dev libgcc-16-dev libstdc++-16-dev               # the C and C++ runtime: glibc 2.43, GCC 16 (Ubuntu 26.04's libstdc++6)
-  libhackrf-dev libsoapysdr-dev libusb-1.0-0-dev libssl-dev libglfw3-dev   # the libraries OnAir calls
-  libgl-dev libegl-dev libx11-dev zlib1g-dev             # OpenGL/EGL and X11 for the GUI (GLFW), zlib
-  libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev libavdevice-dev
-                                                         # FFmpeg: Ubuntu's (GPL)
+  libgl-dev libegl-dev zlib1g-dev                        # OpenGL/EGL for the GUI, zlib
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev   # X11 and Wayland: what GLFW is built
+  libwayland-dev libxkbcommon-dev                        # against (sources/build_sources.sh; it loads them at run time)
+  # OnAir's other libraries (FFmpeg, GLFW, libusb, OpenSSL, HackRF, SoapySDR ...) are built from source for every
+  # target by sources/build_sources.sh (owner, 2026-11-08): not Ubuntu's
 )
-# the libraries whose Ubuntu version is the SDK's minimum (recorded in the lock file; FFmpeg's from libavcodec-dev)
-MINIMUM=(libavcodec-dev libglfw3-dev libusb-1.0-0-dev libssl-dev libhackrf-dev libsoapysdr-dev zlib1g-dev)
+# the libraries whose Ubuntu version is the SDK's minimum (recorded in the lock file; common/check_versions.py)
+MINIMUM=(zlib1g-dev)
 # runtime-only dependencies that linking does not need (drivers, data, tools); globs
 EXCLUDE=('libgl1-mesa-dri' 'libglx-mesa0' 'libegl-mesa0' 'mesa-*' 'libllvm*' 'libgallium*' 'libvulkan1' 'mesa-vulkan-drivers'
          'debconf' 'debconf-2.0' 'dpkg' 'perl-base' 'perl' 'adduser' 'passwd' 'login' 'init-system-helpers' 'sensible-utils'

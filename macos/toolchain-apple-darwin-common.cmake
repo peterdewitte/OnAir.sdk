@@ -99,6 +99,16 @@ macos_tool(CMAKE_OTOOL llvm-otool)
 # --- linker: ld64.lld; libraries from usr/local first (so -lc++ is conda-forge's libc++) --------------------------------
 macos_tool(MACOS_LLD ld64.lld)
 set(_ld "-fuse-ld=lld --ld-path=${MACOS_LLD} -L${CMAKE_OSX_SYSROOT}/usr/local/lib")   # (-fuse-ld=lld: lld's arguments)
+# compiler-rt's builtins (__isPlatformVersionAtLeast for @available, __cpu_model for __builtin_cpu_supports ...): clang
+# links its resource dir's lib/darwin/libclang_rt.osx.a into every macOS program, but the SDK's clang (LLVM's Linux
+# release) has none; the sysroot has conda-forge's, for clang's major version (fetch_sysroot.sh). ld64.lld takes an
+# archive anywhere on the command line.
+file(GLOB _mac_rt "${CMAKE_OSX_SYSROOT}/usr/local/lib/clang/*/lib/darwin/libclang_rt.osx.a")
+if(NOT _mac_rt)
+  message(FATAL_ERROR "${CMAKE_OSX_SYSROOT} has no lib/clang/*/lib/darwin/libclang_rt.osx.a (compiler-rt): re-run macos/fetch_sysroot.sh")
+endif()
+list(GET _mac_rt 0 _mac_rt)
+string(APPEND _ld " ${_mac_rt}")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${_ld}")
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "${_ld}")
 set(CMAKE_MODULE_LINKER_FLAGS_INIT "${_ld}")

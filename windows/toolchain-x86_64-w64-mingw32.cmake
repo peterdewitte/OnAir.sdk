@@ -127,5 +127,11 @@ set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/lib/pkgconfig:${CMAKE_SYSROOT}/shar
 set(ENV{PKG_CONFIG_PATH} "")
 unset(ENV{PKG_CONFIG_SYSROOT_DIR})
 
+# OpenSSL is a static library here (sources/build_sources.sh): CMake's FindOpenSSL then adds what libcrypto.a needs
+# from Windows (crypt32, ws2_32) to OpenSSL::Crypto
+if(NOT DEFINED OPENSSL_USE_STATIC_LIBS)
+  set(OPENSSL_USE_STATIC_LIBS TRUE)
+endif()
+
 # where the DLLs to ship next to a program are (collect_dlls.sh; OnAir: packaging/windows/copy_runtime_dlls.cmake -DSEARCH_DIR=...)
 set(WIN_SYSROOT_BIN "${CMAKE_SYSROOT}/bin")

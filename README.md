@@ -8,36 +8,50 @@ A Yocto-style SDK for a Linux x86-64 build machine (Ubuntu 26.04). It is one fol
   script and its CMake toolchain file. In Yocto's words, *"the matching target sysroot contains needed headers and
   libraries for generating binaries that run on the target architecture"*.
 
-All targets use the **same clang 23**. **Nothing is compiled**: every library is a binary package, downloaded,
-checked (GPG signatures, sha256) and unpacked. Nothing is installed in the system, and neither Windows nor MSYS2 is
-needed. The SDK folder can be moved, and lock files pin every file by sha256.
+All targets use the **same clang 23**. The C/C++ runtimes and system libraries are binary packages, downloaded,
+checked (GPG signatures, sha256) and unpacked. **OnAir's own libraries are built from source** for every target, with
+that clang, at the versions OnAir's `tools/package/cross_deps_windows.sh` builds (`sources/`, owner 2026-11-08): libusb,
+OpenSSL, GLFW, libhackrf, FFmpeg (LGPL), librtlsdr, libairspy, SoapySDR + SoapyRemote, libxml2, libiio, libbladeRF,
+LimeSuite, Hamlib and libairspyhf. Nothing is installed in the system, and neither Windows nor MSYS2 is needed. The SDK
+folder can be moved, and lock files pin every file by sha256.
 
 | Target | Sysroot | Where it comes from |
 |---|---|---|
-| Windows x64, UCRT (`x86_64-w64-mingw32`) | `sysroots/x86_64-w64-mingw32` | 141 **MSYS2 UCRT64** packages (GCC 16.2 runtime, mingw-w64, GLFW, libusb, OpenSSL, HackRF, SoapySDR, iconv, zlib, FFmpeg ...) |
-| Linux x86-64 (`x86_64-linux-gnu`) | `sysroots/x86_64-linux-gnu` | 233 **Ubuntu 26.04** packages (glibc 2.43, GCC 16's libstdc++, GLFW, libusb, OpenSSL, HackRF, SoapySDR, GL/X11, FFmpeg ...) |
-| Raspberry Pi 5 (`aarch64-linux-gnu`) | `sysroots/aarch64-linux-gnu` | 231 **Ubuntu 26.04 arm64** packages, the same list and archive snapshot as Linux x86-64 |
-| macOS arm64 (`arm64-apple-darwin`) | `sysroots/arm64-apple-darwin` | **Apple's macOS 26.5 SDK** (Command Line Tools for Xcode 26.6, from Apple's software update server) + 97 **conda-forge** osx-arm64 packages in `usr/local` (LLVM libc++ 23.1.5, GLFW, libusb, OpenSSL, HackRF, SoapySDR, zlib, FFmpeg ...) |
-| macOS Intel (`x86_64-apple-darwin`) | `sysroots/x86_64-apple-darwin` | the same SDK + 79 conda-forge osx-64 packages |
-| all | FFmpeg | **for now each repository's own GPL build** (owner, 2026-11-07): MSYS2's 9.0.2, Ubuntu's 8.0.1 (x86-64 and arm64), conda-forge's 9.0.2. LGPL is to be sorted out later |
+| Windows x64, UCRT (`x86_64-w64-mingw32`) | `sysroots/x86_64-w64-mingw32` | 19 **MSYS2 UCRT64** packages (GCC 16.2 runtime, mingw-w64, winpthreads, iconv, zlib) + OnAir's libraries built from source |
+| Linux x86-64 (`x86_64-linux-gnu`) | `sysroots/x86_64-linux-gnu` | 58 **Ubuntu 26.04** packages (glibc 2.43, GCC 16's libstdc++, GL/EGL, X11 and Wayland headers, zlib) + OnAir's libraries in `usr/local` |
+| Raspberry Pi 5 (`aarch64-linux-gnu`) | `sysroots/aarch64-linux-gnu` | 57 **Ubuntu 26.04 arm64** packages, the same list and archive snapshot as Linux x86-64, + OnAir's libraries in `usr/local` |
+| macOS arm64 (`arm64-apple-darwin`) | `sysroots/arm64-apple-darwin` | **Apple's macOS 26.5 SDK** (Command Line Tools for Xcode 26.6, from Apple's software update server) + 6 **conda-forge** packages in `usr/local` (LLVM libc++ 23.1.5, compiler-rt, zlib) + OnAir's libraries in `usr/local` |
+| macOS Intel (`x86_64-apple-darwin`) | `sysroots/x86_64-apple-darwin` | the same SDK + 6 conda-forge osx-64 packages + OnAir's libraries |
+| all | OnAir's libraries | **built from source by `sources/build_sources.sh`**, the same versions on every target (`sources/sources.lock`); FFmpeg 8.0 is the **LGPL** build (checked) |
 
-### Versions: Ubuntu 26.04 is the minimum
+### Versions: the same on every target
 
-Ubuntu 26.04 LTS sets the minimum version of every library OnAir calls (Linux x86-64 and the Raspberry Pi 5 use
-Ubuntu's own). Windows takes MSYS2's current packages and macOS conda-forge's, which may be newer. `common/check_versions.py` checks this on every `make_sdk.sh` and stops the SDK
-if a Windows or macOS library is older (the table is in `sdk/VERSIONS.txt`):
+OnAir's own libraries are built from the same source archives for every target, so they have one version everywhere
+(the versions of OnAir's `tools/package/cross_deps_windows.sh`; owner, 2026-11-08). They are linked the same way on
+every target too: **static** libraries are linked into the program, **shared** ones are shipped with it.
 
-| Library | Ubuntu 26.04 = Linux (minimum) | Windows (MSYS2) | macOS arm64 and x86_64 (conda-forge) |
+| Library | Version | Linked | Licence |
 |---|---|---|---|
-| FFmpeg (GPL builds) | 8.0.1 (libavcodec 62) | 9.0.2 (avcodec-63.dll) | 9.0.2 (libavcodec 63) |
-| GLFW | 3.4 | 3.5.1 | 3.5.1 |
-| libusb | 1.0.29 | 1.0.30 | 1.0.30 |
-| OpenSSL | 3.5.5 (+ Ubuntu's security patches, 3.5.5-1ubuntu3.7) | 3.6.5 | 3.6.5 (conda-forge's FFmpeg needs OpenSSL 3; 4.1 would come without it) |
-| HackRF | 2026.01.3 | 2026.01.3 | 2026.01.3 |
-| SoapySDR | 0.8.1 | 0.8.1 | 0.9.0 |
-| zlib | 1.3.1 | 1.4 | 1.3.2 |
-| C++ runtime | GCC 16 libstdc++ (16-20260322) | GCC 16.2 libstdc++ | LLVM libc++ 23.1.5 (conda-forge's, shipped with the program) |
-| OS | Ubuntu 26.04 (x86-64; arm64 on the Pi 5) | Windows 10/11 (UCRT) | **macOS 12 Monterey or newer** |
+| libusb | 1.0.27 | static (also inside the shared radio libraries) | LGPL-2.1+ |
+| OpenSSL | 3.6.5 | static | Apache-2.0 |
+| GLFW | 3.4 | static (Linux: X11 and Wayland, loaded at run time) | Zlib |
+| libhackrf | 2024.02.1 | static | BSD-3-Clause |
+| FFmpeg | 8.0 (libavcodec 62), no libavdevice, no network | static, **LGPL** (`CONFIG_GPL/VERSION3/NONFREE 0`, checked) | LGPL-2.1+ |
+| librtlsdr (RTL-SDR Blog) | 1.4.0 (commit aed0ea1) | static, and shared for OnAir's native driver (`librtlsdr.dll`, `librtlsdr.so.0`, `librtlsdr.0.dylib`) | GPL-2.0+ |
+| libairspy | 1.0.10 + OnAir's close-order fix | static, and shared (`libairspy.dll`, `.so.0`, `.0.dylib`) | BSD-3-Clause |
+| SoapySDR | 0.8.1 (+ the SoapyRemote 0.5.3 client module) | shared | BSL-1.0 |
+| libxml2 | 2.12.9 | static (inside libiio) | MIT |
+| libiio | 0.25 (USB, network, XML backends) | shared | LGPL-2.1+ |
+| libbladeRF | 2023.02 | shared | LGPL-2.1+ (library) |
+| LimeSuite | 23.11.0 (library only; Windows: + FTDI's FTD3XX.dll) | shared | Apache-2.0 |
+| Hamlib | 4.6.2 | shared | LGPL-2.1+ (library) |
+| libairspyhf | 1.6.8 | shared | BSD-3-Clause |
+
+The downloaded part is the runtime: Ubuntu 26.04 LTS sets the minimum (glibc 2.43, GCC 16's libstdc++), and
+`common/check_versions.py` checks that the only shared downloaded library, zlib, is not older on Windows (MSYS2 1.4)
+and macOS (conda-forge 1.3.2) than Ubuntu's 1.3.1. C++ runtime: GCC 16 libstdc++ on Linux and the Pi, GCC 16.2's on
+Windows, conda-forge's LLVM libc++ 23.1.5 on macOS (shipped with the program). OS: Ubuntu 26.04, Windows 10/11 (UCRT),
+**macOS 12 Monterey or newer**.
 
 ```
 sdk/
@@ -67,6 +81,10 @@ sdk/
 
 ```
 make_sdk.sh                  makes sdk/: runs the scripts below, adds the SDK files (--target, --update, --tar, -o)
+sources/                     OnAir's libraries, built from source for every target (after the target sysroot is made)
+  build_sources.sh             builds them with the SDK's compiler and adds them to a target sysroot (--sdk, --target)
+  sources.lock                 the source archives: name, version, URL, sha256 (the versions of OnAir's cross_deps_windows.sh)
+  patches/                     OnAir's patches: airspy close order (all targets), SoapyRemote and LimeSuite for MinGW
 common/                      for all targets
   fetch_toolchain.sh           the native sysroot: LLVM, binutils, Rust (versions at the top)
   toolchain.lock               its exact files
@@ -91,35 +109,41 @@ linux/
   toolchain-aarch64-linux-gnu.cmake  environment-setup-aarch64-linux-gnu
 LICENSE (GPL-3.0-or-later, like OnAir), .gitignore, README.md, .claude/STATUS.md (work status)
 sdk/, sdk.tar.zst            the SDK (6.3 GB): not published, binaries
-cache/                       the downloads (llvm, msys2, rust, deb, ubuntu, apple, conda): not published; rebuilds need no network
+cache/                       the downloads (llvm, msys2, rust, deb, ubuntu, apple, conda, src) and the libraries built from
+                             source (built/<triple>-<key>.tar.zst): not published; rebuilds need no network
 ```
 
 `.gitignore` keeps all binaries out, so `git init && git add . && git commit` publishes the scripts and lock files only.
-The binaries are third-party software under their own licences (`sdk/SDK-MANIFEST.txt`). **FFmpeg is the GPL build on
-every target for now** (MSYS2's, Ubuntu's and conda-forge's are `--enable-gpl --enable-version3`, with x264/x265): a
-program that links it is distributed under the GPL-3.0. The LGPL question is open (owner, 2026-11-07).
+The binaries are third-party software under their own licences (`sdk/SDK-MANIFEST.txt`; the libraries built from
+source put theirs in `share/licenses/<name>/` of the sysroot). **FFmpeg is built as LGPL** on every target (no
+`--enable-gpl`, `--enable-version3` or `--enable-nonfree`; `build_sources.sh` stops if `config.h` says otherwise, and
+writes FFmpeg's configuration to `share/licenses/ffmpeg/CONFIGURATION.txt`). librtlsdr is GPL-2.0+.
 
 ---
 
 ## 1. On the Ubuntu 26.04 build machine
 
 ```bash
-sudo apt install cmake ninja-build pkgconf git curl zstd xz-utils unzip gpg gpgv python3
+sudo apt install cmake ninja-build pkgconf git curl zstd xz-utils unzip gpg gpgv python3 make perl nasm patch libwayland-bin
 #   cmake ninja-build pkgconf          the builds (CMake 3.21+ reads CMAKE_TOOLCHAIN_FILE from the environment)
 #   curl zstd xz-utils unzip gpg gpgv  make_sdk.sh: download, unpack, check signatures
 #   python3                            make_sdk.sh: the Ubuntu dependency resolver and the version check
+#   make perl nasm patch               sources/build_sources.sh: configure scripts (OpenSSL's is Perl), FFmpeg's x86 assembly
+#   libwayland-bin                     wayland-scanner, for GLFW's Wayland support (Linux targets)
 # optional: run the Windows programs and tests on Linux
 sudo apt install wine
 ```
 
-That is all. No `clang`, `gcc-mingw-w64`, `libfoo-dev` or `rustup` from apt: they are in the SDK. The build machine's
+That is all. No `clang`, `gcc-mingw-w64`, `libfoo-dev` or `rustup` from apt: they are in the SDK (the libraries built
+from source are compiled with the SDK's clang too). The build machine's
 own headers and libraries are never used, so the result is the same on every machine.
 
 Then make the SDK there, or copy one made elsewhere:
 
 ```bash
 git clone <this repository> ~/onair_windows_sysroot && cd ~/onair_windows_sysroot
-./make_sdk.sh                         # -> ./sdk, both targets, from the lock files (about 1.6 GB of downloads the first time)
+./make_sdk.sh                         # -> ./sdk, all targets, from the lock files; builds OnAir's libraries the first
+                                      #    time (about 15 min on 16 cores; later runs take them from cache/built)
 ./make_sdk.sh --target linux          # only one target (windows | linux | macos | macos-arm64 | macos-x86_64 | all)
 ./make_sdk.sh --tar                   # ... and ./sdk.tar.zst, to copy to other machines
 
@@ -138,10 +162,13 @@ cmake --fresh -S . -B build-win -G Ninja \
       -DCMAKE_BUILD_TYPE=Release -DDECT2_BUILD_APP=ON -DDECT2_BUILD_TESTS=OFF
 cmake --build build-win -j$(nproc) --target dect2          # build-win/dect2.exe
 
-# the DLLs dect2.exe needs, recursively, from the target sysroot (FFmpeg is delay-loaded: name it explicitly)
-$SDK/collect_dlls.sh build-win/dect2.exe "" 'avutil-*.dll' 'swresample-*.dll' 'swscale-*.dll' \
-      'avcodec-*.dll' 'avformat-*.dll' 'avdevice-*.dll'
+# the DLLs dect2.exe needs, recursively, from the target sysroot, and the radio DLLs OnAir's native drivers load by name
+$SDK/collect_dlls.sh build-win/dect2.exe "" librtlsdr.dll libairspy.dll libairspyhf.dll libbladeRF.dll libiio.dll \
+      libLimeSuite.dll 'libhamlib-*.dll'
 ```
+
+FFmpeg, GLFW, libusb, OpenSSL and libhackrf are static libraries, linked into the program. The shared ones (SoapySDR,
+Hamlib, the radio libraries) are DLLs in the sysroot's `bin/`; SoapyRemote is `lib/SoapySDR/modules0.8/libremoteSupport.dll`.
 
 Without the environment script, the toolchain file alone does the same:
 `cmake ... -DCMAKE_TOOLCHAIN_FILE=$SDK/toolchain-x86_64-w64-mingw32.cmake`. It finds the SDK's tools next to itself,
@@ -158,8 +185,7 @@ Notes for OnAir on Windows:
 * Leave out `-DDECT2_WIN_AVX2=ON` and `-march=native`. On a cross build "native" means the build machine's CPU.
 * `dect2cli`, `onair-server`, and the tests (`-DDECT2_BUILD_TESTS=ON`) build the same way. Run the tests on Windows or
   with wine (`-DCMAKE_CROSSCOMPILING_EMULATOR=wine`).
-* FFmpeg's DLL names (avcodec-63, avutil-61, swscale-10 ...) are those of FFmpeg 9.0, as OnAir's delay-load list
-  (`cmake/FfmpegDelayLoad.cmake`) expects.
+* FFmpeg is the static LGPL 8.0 (libavcodec 62), so there are no FFmpeg DLLs to delay-load or ship.
 
 Windows toolchain options:
 
@@ -188,10 +214,14 @@ Or `-DCMAKE_TOOLCHAIN_FILE=$SDK/toolchain-x86_64-linux-gnu.cmake` without the en
 * lets pkg-config and `find_*` look only in the target sysroot;
 * sets `ONAIR_CARGO` / `ONAIR_RUSTC` to the SDK's Rust.
 
-The program runs on Ubuntu 26.04 and newer. GLFW, libusb, OpenSSL, HackRF, SoapySDR, X11/GL are Ubuntu 26.04's shared
-libraries, so the target needs their runtime packages (`libglfw3 libusb-1.0-0 libssl3t64 libhackrf0 libsoapysdr0.8 ...`;
-`readelf -d build-linux/dect2 | grep NEEDED` lists them). FFmpeg is Ubuntu's 8.0.1 too (`libavcodec62 libavformat62
-libavutil60 libswscale9 ...`), so nothing has to be shipped with the program.
+The program runs on Ubuntu 26.04 and newer. FFmpeg, GLFW, libusb, OpenSSL and libhackrf are linked in statically
+(GLFW loads X11/Wayland and GL at run time, from the system). OnAir's shared libraries are in the sysroot's
+`usr/local/lib` and are shipped with the program (OnAir's `DECT2_RADIO_LIB_DIR`): `libSoapySDR.so.0.8` (+
+`SoapySDR/modules0.8/libremoteSupport.so`), `libhamlib.so.4`, and the radio libraries OnAir loads by name,
+`librtlsdr.so.0`, `libairspy.so.0`, `libairspyhf.so.0`, `libbladeRF.so.2`, `libiio.so.0`, `libLimeSuite.so.23.11-1`.
+They need only glibc and libstdc++; libusb is inside each of them (its symbols hidden), built without udev (hotplug
+through netlink). librtlsdr is built with `DETACH_KERNEL_DRIVER=ON` on Linux, as OnAir's Linux packages do.
+`readelf -d build-linux/dect2 | grep NEEDED` lists what the program needs from the system.
 
 ## 3a. Build OnAir for the Raspberry Pi 5
 
@@ -209,12 +239,11 @@ environment script also points cargo at `aarch64-unknown-linux-gnu` with the SDK
 * **The Pi runs Ubuntu 26.04 (64-bit)**, Ubuntu's Raspberry Pi image, with the runtime packages as on x86-64. Raspberry
   Pi OS (Debian 13 "trixie") is **not** a target: its glibc (2.41) and libraries (libusb 1.0.28, FFmpeg 7.1) are older
   than Ubuntu 26.04's, the SDK's minimum, so programs built here do not start there.
-* Checked: a C++23 program with GLFW, libusb, OpenSSL, SoapySDR and libavcodec/libavformat/libswscale builds with
-  CMake and with `$CXX` directly, and **runs under `qemu-aarch64 -L <sysroot>`** (prints GLFW 3.4.0, libusb 1.0.29,
-  OpenSSL 3.5.5, SoapySDR 0.8.1, libavcodec 62.11.100); a Rust program builds with `cargo build`. Not yet run on a Pi.
+* OnAir's libraries are the same build as on x86-64 (LimeSuite without SIMD flags on arm64).
+* Checked with the earlier, downloaded libraries: a C++23 program runs under `qemu-aarch64 -L <sysroot>`; a Rust
+  program builds with `cargo build`. Not yet run on a Pi. For this version see 5.6.
 
-OnAir's other Linux FFmpeg option, `-DDECT2_FFMPEG_PREFIX=<prefix>` with `tools/package/build_ffmpeg_static.sh`
-(a static FFmpeg it builds itself), still works with this SDK: build that FFmpeg with the SDK's compiler.
+FFmpeg is already static (`usr/local/lib/libav*.a`): OnAir's `-DDECT2_FFMPEG_PREFIX=` is not needed.
 
 ## 3b. Build OnAir for macOS (arm64 or Intel)
 
@@ -227,33 +256,56 @@ cmake --fresh -S . -B build-mac-arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_BUILD_RPATH=@executable_path/lib -DCMAKE_INSTALL_RPATH=@executable_path/../Frameworks
 cmake --build build-mac-arm64 -j$(nproc)
 
-# the dylibs the program needs (conda-forge's libraries and libc++), recursively, into a folder its rpath names
-$SDK/collect_dylibs.sh build-mac-arm64/dect2 build-mac-arm64/lib
+# the dylibs the program needs (libc++, SoapySDR ...), recursively, and the radio dylibs OnAir loads by name
+$SDK/collect_dylibs.sh build-mac-arm64/dect2 build-mac-arm64/lib "$MAC_SYSROOT" librtlsdr.0.dylib libairspy.0.dylib \
+      libairspyhf.0.dylib libbladeRF.2.dylib libiio.0.dylib 'libLimeSuite.*.dylib' libhamlib.4.dylib
 ```
 
 Or `-DCMAKE_TOOLCHAIN_FILE=$SDK/toolchain-arm64-apple-darwin.cmake` without the environment script. Outside CMake,
 `arm64-apple-darwin-clang(++)` / `x86_64-apple-darwin-clang(++)` carry everything (`llvm/bin/<triple>.cfg`: sysroot,
 deployment target, libc++, ld64.lld). A universal binary: build both and join them with `llvm-lipo -create`.
 
-* **C++ runtime: conda-forge's libc++ 23.1.5**, not the SDK's. The sysroot's C++ libraries (SoapySDR ...) are built
-  against it, and SoapySDR's C++ API passes `std::string`/`std::vector` across, so the program must use the same one.
+* **C++ runtime: conda-forge's libc++ 23.1.5**, not the SDK's. The sysroot's C++ libraries (SoapySDR, LimeSuite) are
+  built against it (by `build_sources.sh`), and SoapySDR's C++ API passes `std::string`/`std::vector` across, so the program must use the same one.
   It is LLVM's libc++ of the same release as clang. The toolchain sets `-stdlib++-isystem <sysroot>/usr/local/include/c++/v1`,
   `-L<sysroot>/usr/local/lib` and `-D_LIBCPP_DISABLE_AVAILABILITY` (the headers' "introduced in macOS 13.3" markings are
   about Apple's system libc++; the shipped one has everything), as conda-forge does. Programs load `@rpath/libc++.1.dylib`.
-* **Ship the dylibs**: every conda-forge library has an `@rpath/...` install name. `collect_dylibs.sh` copies what a
-  program (and extra dylibs given as globs, e.g. SoapySDR modules) needs; give the program a matching rpath
-  (`@executable_path/../Frameworks` in an `.app`). A test program with GLFW, libusb, OpenSSL, SoapySDR and libavcodec
-  needs 60 dylibs (most of them FFmpeg's).
-* **macOS 12 or newer**: conda-forge's arm64 FFmpeg needs it (through OpenVINO). `macos/macho.py check` verifies every
-  dylib in the sysroot against `MACOS_MIN`; the toolchain refuses an older `CMAKE_OSX_DEPLOYMENT_TARGET`.
+* **Ship the dylibs**: every dylib in `usr/local/lib` (conda-forge's and the ones built from source) has an
+  `@rpath/...` install name. `collect_dylibs.sh` copies what a program (and extra dylibs given as globs, e.g. the radio
+  libraries or SoapySDR modules) needs; give the program a matching rpath (`@executable_path/../Frameworks` in an
+  `.app`). FFmpeg, GLFW, libusb, OpenSSL and libhackrf are static: nothing to ship for them.
+* **macOS 12 or newer** (`MACOS_MIN`, OnAir's minimum). `macos/macho.py check` verifies every dylib in the sysroot
+  against it (`build_sources.sh` runs it too); the toolchain refuses an older `CMAKE_OSX_DEPLOYMENT_TARGET`.
 * **Signing**: ld64.lld gives arm64 programs the ad-hoc signature macOS needs to run them. Changing a binary afterwards
   (`llvm-install-name-tool`, `llvm-strip`) needs a new signature on a Mac (`codesign -s - -f`), and a distributed app
-  needs Developer ID signing and notarisation on a Mac. conda-forge's dylibs are not changed by the SDK.
+  needs Developer ID signing and notarisation on a Mac. conda-forge's dylibs are not changed by the SDK. Hamlib's dylib
+  gets its `@rpath` install name from `llvm-install-name-tool` after the build (libtool writes the prefix); LLVM's tool
+  redoes the linker's ad-hoc signature, not checked on a Mac.
 * Not tested yet: running a program built this way on a Mac (no Mac here). The test program above links for both
   architectures and has the expected load commands (`macho.py deps`).
 
+## 3c. The tools that make the packages
+
+`common/build_pkgtools.sh` (pinned by `common/pkgtools.lock`, run by `make_sdk.sh`) adds these to `sysroots/x86_64-sdk-linux/bin`, so a package needs nothing installed:
+
+| Tool | For | From |
+|---|---|---|
+| `makensis` | Windows installer | Ubuntu's `nsis`, unpacked |
+| `mkfs.hfsplus`, `fsck.hfsplus` | macOS disk image's volume | Ubuntu's `hfsprogs`, unpacked |
+| `hfsplus`, `dmg` | fill the volume, compress the image | Mozilla's libdmg-hfsplus, built from source |
+| `rcodesign` | ad-hoc or Developer ID signing | apple-codesign (MPL-2.0), built with the SDK's cargo |
+
+The first build also needs `gcc`, `zlib1g-dev` and `liblzma-dev` on the build machine; the result is kept in `cache/built/`. OnAir's `tools/package/sdk/all.sh` uses them. `macho.py bundlecheck <app>` checks a signed app on Linux, but only a Mac shows that it really runs.
+
 ## 4. Change or update the SDK
 
+* **One of OnAir's libraries (another version, or another library built from source):** change its `src` line in
+  `sources/sources.lock` (version, file, URL, sha256; the archive is downloaded into `cache/src` and checked) and its
+  section in `sources/build_sources.sh` (configure options, static or shared, licence files). The next `./make_sdk.sh`
+  builds again, because the build key covers both files, the patches and the target's lock files. Do not also add the
+  same library to a `fetch_sysroot.sh` `PACKAGES` list: `build_sources.sh` stops when a file it installs is already in
+  the sysroot. `sources/build_sources.sh --sdk sdk --target <t> --rebuild --keep-work` rebuilds one target in place and
+  keeps `cache/work/<triple>` (the logs are in `log/`).
 * **Another Windows library:** add it to `PACKAGES` at the top of `windows/fetch_sysroot.sh` (short MSYS2 names:
   `hamlib`, `libuhd` ...; look them up at <https://packages.msys2.org/>, environment UCRT64).
 * **Another Linux library:** add its `-dev` package to `PACKAGES` at the top of `linux/fetch_sysroot.sh`
@@ -264,8 +316,8 @@ deployment target, libc++, ld64.lld). A universal binary: build both and join th
   `common/check_versions.py`.
 * Then `./make_sdk.sh --update`: the newest MSYS2 packages, a new Ubuntu snapshot (the same one for x86-64 and the Pi 5),
   the newest Command Line Tools and conda-forge packages, and new lock files. The version check runs at the end.
-* **FFmpeg** is a package like the others: `ffmpeg` in `windows/fetch_sysroot.sh` and `macos/fetch_sysroot.sh`
-  (`'ffmpeg=*=gpl_*'`; `lgpl_*` for conda-forge's LGPL build), `libav*-dev` in `linux/fetch_sysroot.sh`.
+* **FFmpeg** is built from source (`sources/`): its configure options are in the FFmpeg section of
+  `build_sources.sh`. `--enable-gpl`/`--enable-version3`/`--enable-nonfree` make the build stop (the LGPL check).
 * **Another LLVM or Rust:** change `LLVM_VERSION` / `RUST_VERSION` at the top of `common/fetch_toolchain.sh`, then
   `./make_sdk.sh --update`. The binutils version comes from apt.
 * **The same SDK again** (another machine, later): `./make_sdk.sh` with the committed lock files. The Ubuntu packages come
@@ -285,6 +337,7 @@ deployment target, libc++, ld64.lld). A universal binary: build both and join th
 | binutils | Ubuntu archive via `apt-get download` | apt checks the signed archive indices; sha256 in `common/toolchain.lock` |
 | Apple's macOS SDK | swscan.apple.com catalog, swcdn.apple.com package (Command Line Tools) | the package's xar signature: the sha1 of its table of contents, the RSA signature on it by Apple's "Software Update" certificate, and the chain to **Apple Root CA**, sha256 pinned in `macos/fetch_sysroot.sh` (B0B1 730E CBC7 FF45 0514 2C49 F129 5E6E DA6B CAED 7E2C 68C5 BE91 B5A1 1001 F024); the payload's sha1 from that signed table; sha256 in `macos/sysroot-*.lock` |
 | conda-forge packages | conda.anaconda.org/conda-forge (osx-arm64, osx-64, noarch) | sha256 from `repodata.json` over HTTPS (conda-forge publishes **no signatures**); sha256 in `macos/sysroot-*.lock` |
+| Source archives of OnAir's libraries | GitHub releases and tags, openssl.org mirror on GitHub, ffmpeg.org, download.gnome.org | sha256 pinned in `sources/sources.lock`. When first pinned: OpenSSL against its published `.sha256`, libxml2 against GNOME's `.sha256sum`, FFmpeg's GPG signature (key FCF9 86EA 15E6 E293 A564 4F10 B432 2F04 D676 58D8), SoapyRemote against the sha256 in OnAir's script; the GitHub archives have no signatures |
 | Rust | static.rust-lang.org | GPG `.asc` against the Rust release key, fingerprint pinned in `common/fetch_toolchain.sh` (108F 6620 5EAE B0AA A8DD 5E1C 85AB 96E6 FA1B E5FE); sha256 in `common/toolchain.lock` |
 
 With a lock file, every file must also have the sha256 written there.
@@ -304,13 +357,14 @@ split into `common/`, `windows/` and `linux/`.
 
 ### 5.1 Decisions
 
-* **Binary packages only, nothing compiled.** Building every package from source for both targets would be a
+* **(Changed 2026-11-08: OnAir's own libraries are built from source, 5.6.) Earlier: binary packages only, nothing
+  compiled.** Building every package from source for both targets would be a
   distribution's job (about 240 recipes, and each library's security fixes to follow). An intermediate version built
   FFmpeg, GLFW, libusb and OpenSSL from source to give Linux the Windows versions. It was dropped for a simpler rule:
   **Ubuntu 26.04 LTS's versions are the minimum**, Windows may be newer, and `common/check_versions.py` checks it.
   (The other way round, Ubuntu's exact versions on Windows, is not possible from binaries: MSYS2 never had libusb 1.0.29
   or OpenSSL 3.5.5, and its old FFmpeg 8.0.1 package needs DLLs MSYS2 no longer has.)
-* **(Replaced 2026-11-07: FFmpeg now comes from MSYS2, Ubuntu and conda-forge, the GPL builds.) Earlier:
+* **(Replaced 2026-11-07 by the repositories' GPL builds, and 2026-11-08 by an LGPL FFmpeg built from source: 5.6.) Earlier:
   FFmpeg from FFmpeg-Builds, LGPL, the same for both targets.** MSYS2's FFmpeg is the GPLv3 build and Ubuntu's too
   (`--enable-gpl --enable-version3`, x264/x265). The `lgpl-shared` builds are self-contained: the codec libraries are
   linked in, so the Windows sysroot shrank from 141 to 27 MSYS2 packages, and a Windows program needs 16 DLLs instead
@@ -367,6 +421,8 @@ split into `common/`, `windows/` and `linux/`.
 
 ### 5.5 GPL FFmpeg everywhere, Raspberry Pi 5 (2026-11-07)
 
+(The FFmpeg part is replaced by 5.6: FFmpeg is built from source, LGPL. The Raspberry Pi 5 part stands.)
+
 * **FFmpeg** (owner: "use the ffmpeg gpl version from the upstream repositories. Do not use btbn anymore, for any
   target"): `ffmpeg` in the MSYS2 list, Ubuntu's `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
   libswresample-dev libavfilter-dev libavdevice-dev`, conda-forge's `gpl_*` build. `common/fetch_ffmpeg.sh`, its lock
@@ -381,13 +437,59 @@ split into `common/`, `windows/` and `linux/`.
   checks the Pi's minimum lines too. The clang config file is `aarch64-unknown-linux-gnu.cfg` (checked: that is the
   name clang 23 looks for when run as `aarch64-linux-gnu-clang`); Rust's `aarch64-unknown-linux-gnu` std was added.
 
+### 5.6 OnAir's libraries built from source (2026-11-08)
+
+* **Owner:** OnAir builds some of its dependencies itself (`tools/package/cross_deps_windows.sh`): build them for every
+  architecture and add them to the sysroots, and remove the downloaded variants. Decisions: **all 15** libraries of
+  that script, **exactly its versions**, FFmpeg as its **LGPL** build (replacing the GPL repository builds of 5.5), and
+  **the same static/shared split on every target** as that script has on Windows. UHD stays out: the script takes it
+  from MSYS2's prebuilt packages, it is not built there.
+* **Removed downloads:** MSYS2's `ffmpeg glfw hackrf libusb openssl soapysdr` (with their closure the Windows sysroot
+  went from 141 to 19 packages), Ubuntu's `libav*-dev libglfw3-dev libhackrf-dev libsoapysdr-dev libssl-dev
+  libusb-1.0-0-dev` (233 to 58; the X11, Wayland and xkbcommon headers GLFW is built against were added), conda-forge's
+  `ffmpeg glfw hackrf libhackrf libusb openssl soapysdr` (97 to 6 on arm64). The Linux lock files keep the same archive
+  snapshot; MSYS2 and conda-forge were re-resolved (their runtime packages did not change). `check_versions.py` now
+  compares zlib only.
+* **How:** `sources/build_sources.sh` sources the target's `environment-setup-*` and builds each library with the
+  SDK's toolchain file (CMake) or `$CC` (configure scripts: libusb, OpenSSL, FFmpeg, Hamlib), installs it into a
+  staging folder for its prefix (`/ucrt64` on Windows, as MSYS2; `/usr/local` elsewhere), makes `.pc` and CMake files
+  relocatable, checks that no file is already in the sysroot, and copies it in. Static libraries' `.pc` files get their
+  `Libs.private`/`Requires.private` merged into `Libs`/`Requires`, so OnAir's plain `pkg_check_modules` links them.
+  Linux: everything `-fPIC`, libusb and libxml2 kept private in the shared libraries (`--exclude-libs`), no RPATH;
+  macOS: `@rpath` install names, macho.py check.
+* **Changes to the sources the build needs** (besides OnAir's three patches, now in `sources/patches/`):
+  Windows header and library names made lowercase where a project wrote `<Windows.h>`, `<Winsock2.h>`, `SetupAPI`,
+  `Ws2_32.lib` (OnAir's script ran on macOS, whose file system ignores case); a `windres` wrapper with the sysroot for
+  projects that run `CMAKE_RC_COMPILER` themselves (libairspy); SoapySDR's `Factory.cpp` and SoapyRemote's
+  `SoapyURLUtils.cpp` get the `#include <iterator>` / `<cstdlib>` libc++ does not bring along; Hamlib's Windows
+  timer (`lib/precise_time.c`) gets `<assert.h>` and a constructor instead of MSVC's `__declspec(allocate(".CRT$XCU"))`,
+  which clang and GCC ignore (its `QueryPerformanceFrequency` would stay 0). libtool is given the target's linker
+  (Hamlib), and `lt_cv_deplibs_check_method=pass_all` on Windows so the static libusb may go into `libhamlib-4.dll`.
+* **Differences from OnAir's script:** Hamlib is built with its configure script (4.6.2 has no CMake build; the
+  script's CMake call never worked, it skipped Hamlib). The shared libraries are installed with their headers, `.pc`
+  files and import libraries (the script copied only some DLLs). LimeSuite: FX3 (LimeSDR-USB) on Linux and macOS,
+  where it needs only libusb (off on Windows, as in the script: Cypress' SDK is MSVC-only); no SIMD flags on arm64.
+  libiio without DNS-SD on Linux (it would need Avahi). libusb on Linux without udev. librtlsdr with
+  `DETACH_KERNEL_DRIVER=ON` on Linux. airspyhf links the static libusb (the script linked MSYS2's libusb DLL).
+* **Checked:** `./make_sdk.sh` from the lock files (all five targets, about 20 min on 16 cores the first time, 4.5 GB).
+  A C++ test program that finds every library the way OnAir does (plain `pkg_check_modules` for libhackrf, libusb,
+  FFmpeg, GLFW, SoapySDR, librtlsdr, libairspy, Hamlib, libiio, libxml2; `find_package(OpenSSL)`) builds for all five
+  targets with the toolchain files. The Linux x86-64 one runs here and prints hackrf 0.9, libusb 1.0.27, FFmpeg 8.0
+  "LGPL version 2.1 or later", GLFW 3.4.0 (Wayland, X11), SoapySDR 0.8.1, airspy 1.0.10, Hamlib 4.6.2, libiio 0.25,
+  OpenSSL 3.6.5. The Windows `.exe` imports only Windows', the GCC runtime's and the SDK's DLLs. Not run on Windows, a
+  Mac or a Pi (no wine or qemu here). The Windows toolchain now sets `OPENSSL_USE_STATIC_LIBS` (FindOpenSSL then adds
+  crypt32/ws2_32 for the static libcrypto). OnAir itself has not been built with this version yet.
+* **Known:** the versions are older than Ubuntu 26.04's own (libusb 1.0.27 against 1.0.29, hackrf 2024.02.1 against
+  2026.01.3, FFmpeg 8.0 against 8.0.1): the owner's choice, the script's versions. FFmpeg's `FFMPEG_CONFIGURATION`
+  string (inside libavutil) names the build machine's SDK folder, as any FFmpeg build's does.
+
 ### 5.4 macOS (added 2026-11-07)
 
 * **Sources.** Homebrew was looked at first: it no longer builds Intel bottles for most packages (no x86_64 OpenSSL,
   SoapySDR, zlib, FFmpeg) and its FFmpeg is GPL. conda-forge builds every library for osx-arm64 and osx-64, keeps old
   packages, and its dylibs use `@rpath` install names, so it is the single macOS source (as MSYS2 is for Windows).
   Apple's SDK comes from Apple's own update server (the Command Line Tools package), not from a third-party SDK mirror.
-* **FFmpeg.** No self-contained LGPL macOS build like BtbN's exists: PyAV's `pyav-ffmpeg` macOS builds link x264/x265
+* **FFmpeg** (replaced by 5.6: built from source). No self-contained LGPL macOS build like BtbN's exists: PyAV's `pyav-ffmpeg` macOS builds link x264/x265
   (GPL) while labelling themselves LGPL, so they were not used. conda-forge's `lgpl_*` FFmpeg 9.0.2 is real LGPL but
   pulls in about 75 more packages on arm64 (OpenVINO, libplacebo, Vulkan, SDL, librsvg, GLib ...). The owner chose
   **conda-forge's GPL build for now** (`'ffmpeg=*=gpl_*'` in `PACKAGES`). For LGPL, change it to `'ffmpeg=*=lgpl_*'` and

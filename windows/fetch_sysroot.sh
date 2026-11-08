@@ -25,9 +25,9 @@ export LC_ALL=C   # the same sort order (lock file) everywhere
 # ---- the packages of the sysroot: edit this list (short names; their dependencies come along on their own) ----------
 PACKAGES=(
   gcc crt headers libwinpthread                          # the compiler runtime: UCRT, libgcc, libstdc++, winpthreads
-  glfw hackrf libusb soapysdr libiconv openssl zlib      # OnAir's libraries; Ubuntu 26.04's versions are the
-                                                         # minimum: common/check_versions.py
-  ffmpeg                                                 # FFmpeg: MSYS2's (the GPL build; owner, 2026-11-07)
+  libiconv zlib                                          # iconv and zlib (Ubuntu 26.04's zlib is the minimum: common/check_versions.py)
+  # OnAir's other libraries (FFmpeg, GLFW, libusb, OpenSSL, HackRF, SoapySDR ...) are built from source for every
+  # target by sources/build_sources.sh (owner, 2026-11-08): not from MSYS2
   # hamlib libuhd
 )
 # ----------------------------------------------------------------------------------------------------------------------

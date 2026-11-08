@@ -3,7 +3,8 @@
 
     python3 -I check_versions.py <linux/sysroot.lock> <windows/sysroot.lock> [<macos/sysroot-ARCH.lock> | <linux/sysroot-ARCH.lock> ...]
 
-For each library below, the upstream version on Windows (the MSYS2 package), on macOS (the conda-forge package) and on
+For each downloaded library below (zlib; the libraries built from source have one version for all targets:
+sources/sources.lock), the upstream version on Windows (the MSYS2 package), on macOS (the conda-forge package) and on
 the other Ubuntu architectures (Raspberry Pi 5: linux/sysroot-arm64.lock's "minimum" lines) must be the same as or
 newer than Ubuntu x86-64's (the "minimum" lines of linux/sysroot.lock). Newer is fine. Upstream versions are compared (no epoch, no Debian/MSYS2 package revision, "+dfsg"/"+really" handled), in
 dpkg's order. Prints a table; exits 1 when one is older.
@@ -16,14 +17,10 @@ import sys
 # library: (Ubuntu package with the minimum version, MSYS2 package name without mingw-w64-ucrt-x86_64-,
 #           conda-forge package name)
 LIBRARIES = {
-    "FFmpeg":   ("libavcodec-dev", "ffmpeg", "ffmpeg"),
-    "GLFW":     ("libglfw3-dev", "glfw", "glfw"),
-    "libusb":   ("libusb-1.0-0-dev", "libusb", "libusb"),
-    "OpenSSL":  ("libssl-dev", "openssl", "openssl"),
-    "HackRF":   ("libhackrf-dev", "hackrf", "hackrf"),
-    "SoapySDR": ("libsoapysdr-dev", "soapysdr", "soapysdr"),
     "zlib":     ("zlib1g-dev", "zlib", "libzlib"),
 }
+# OnAir's other libraries (FFmpeg, GLFW, libusb, OpenSSL, HackRF, SoapySDR ...) are built from source by
+# sources/build_sources.sh at the same version for every target (sources/sources.lock), so there is nothing to compare.
 
 here = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("ubuntu_index", os.path.join(here, "..", "linux", "ubuntu_index.py"))

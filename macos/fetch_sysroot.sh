@@ -33,12 +33,12 @@ export LC_ALL=C
 
 # ---- the packages of the sysroot: edit this list (conda match specs; their dependencies come along on their own) -----
 PACKAGES=(
-  'ffmpeg=*=gpl_*'                                      # FFmpeg first: it decides the versions of the libraries it uses.
-                                                        # GPL build for now; 'ffmpeg=*=lgpl_*' is conda-forge's LGPL one
   libcxx libcxx-devel                                   # the C++ runtime and headers: LLVM libc++ (the same as clang)
-  glfw hackrf libusb openssl soapysdr libzlib           # OnAir's libraries; Ubuntu 26.04's versions are the minimum
+  libzlib                                               # zlib (Ubuntu 26.04's version is the minimum)
+  # OnAir's other libraries (FFmpeg, GLFW, libusb, OpenSSL, HackRF, SoapySDR ...) are built from source for every
+  # target by sources/build_sources.sh (owner, 2026-11-08): not conda-forge's
 )
-MACOS_MIN=12.0         # deployment target: conda-forge's arm64 FFmpeg needs 12.0 (through OpenVINO); 11.0 is arm64's first
+MACOS_MIN=12.0         # deployment target: macOS 12 Monterey (OnAir's minimum; 11.0 is arm64's first)
 # runtime-only dependencies a build does not need (globs)
 EXCLUDE=('python' 'python_abi' 'libpython' 'ca-certificates' 'fonts-*' 'font-ttf-*' 'tzdata')
 # the parts of Apple's SDK left out (globs, relative to the SDK folder): Swift's modules
@@ -65,6 +65,12 @@ done
 die() { echo "error: $*" >&2; exit 1; }
 say() { echo "==> $*"; }
 case "$ARCH" in arm64) SUBDIR=osx-arm64;; x86_64) SUBDIR=osx-64;; *) die "--arch arm64 or x86_64";; esac
+# compiler-rt's macOS builtins (lib/clang/<major>/lib/darwin/libclang_rt.osx.a: __isPlatformVersionAtLeast for
+# @available, __cpu_model for __builtin_cpu_supports ...), which clang links into every macOS program. LLVM's Linux
+# release (common/fetch_toolchain.sh) has no darwin compiler-rt; conda-forge's (noarch) is taken for clang's major version.
+LLVM_MAJOR=$(sed -n 's/^LLVM_VERSION=\([0-9]*\)\..*/\1/p' "$ROOT/common/fetch_toolchain.sh")
+[ -n "$LLVM_MAJOR" ] || die "no LLVM_VERSION in common/fetch_toolchain.sh"
+PACKAGES+=("compiler-rt_$SUBDIR=$LLVM_MAJOR.*")
 TRIPLE=$ARCH-apple-darwin
 OUT=${OUT:-$ROOT/$TRIPLE} LOCK=${LOCK:-$SCRIPT_DIR/sysroot-$ARCH.lock}
 for t in curl zstd unzip openssl python3 sha256sum; do command -v $t >/dev/null || die "$t not found (apt install curl zstd unzip openssl python3)"; done

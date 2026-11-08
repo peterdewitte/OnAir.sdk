@@ -18,7 +18,8 @@ export CC="clang --target=x86_64-w64-windows-gnu --sysroot=$WIN_SYSROOT --ld-pat
 export CXX="clang++ --target=x86_64-w64-windows-gnu --sysroot=$WIN_SYSROOT --ld-path=$WIN_NATIVE_SYSROOT/bin/x86_64-w64-mingw32-ld"
 export AR=x86_64-w64-mingw32-ar RANLIB=x86_64-w64-mingw32-ranlib NM=x86_64-w64-mingw32-nm STRIP=x86_64-w64-mingw32-strip
 export OBJDUMP=x86_64-w64-mingw32-objdump DLLTOOL=x86_64-w64-mingw32-dlltool
-export RC="llvm-windres --target=pe-x86-64 --preprocessor-arg=--sysroot=$WIN_SYSROOT" WINDRES="$RC"
+export RC="llvm-windres --target=pe-x86-64 --preprocessor-arg=--sysroot=$WIN_SYSROOT"
+export WINDRES="$RC"
 export PKG_CONFIG_LIBDIR="$WIN_SYSROOT/lib/pkgconfig:$WIN_SYSROOT/share/pkgconfig" PKG_CONFIG_PATH=""
 unset PKG_CONFIG_SYSROOT_DIR
 # Rust: the SDK's cargo uses the SDK's rustc (which has the x86_64-pc-windows-gnu standard library)

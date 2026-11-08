@@ -12,17 +12,21 @@
 #   <sdk>/environment-setup-x86_64-apple-darwin  macOS x86_64 (Intel): likewise
 #   <sdk>/collect_dlls.sh                        Windows: the DLLs a built program needs
 #   <sdk>/collect_dylibs.sh                      macOS: the dylibs a built program needs
-#   <sdk>/sysroots/x86_64-sdk-linux/             native tools (common/fetch_toolchain.sh)
+#   <sdk>/sysroots/x86_64-sdk-linux/             native tools (common/fetch_toolchain.sh) and the tools that make the packages:
+#                                                makensis, mkfs.hfsplus, hfsplus, dmg, rcodesign (common/build_pkgtools.sh)
 #   <sdk>/sysroots/x86_64-w64-mingw32/           Windows target: MSYS2 UCRT64 packages (windows/fetch_sysroot.sh)
 #   <sdk>/sysroots/x86_64-linux-gnu/             Linux target: Ubuntu 26.04 packages (linux/fetch_sysroot.sh)
 #   <sdk>/sysroots/aarch64-linux-gnu/            Raspberry Pi 5 target: Ubuntu 26.04 arm64 packages (linux/fetch_sysroot.sh --arch arm64)
 #   <sdk>/sysroots/{arm64,x86_64}-apple-darwin/  macOS targets: Apple's SDK + conda-forge packages (macos/fetch_sysroot.sh)
-#   FFmpeg: each target's own repository's GPL build (MSYS2, Ubuntu, conda-forge; owner, 2026-11-07)
+#   + in every target sysroot: OnAir's own libraries built from source (sources/build_sources.sh, owner 2026-11-08):
+#     libusb, OpenSSL, GLFW, libhackrf, FFmpeg (LGPL), librtlsdr, libairspy, libxml2 (static), SoapySDR + SoapyRemote,
+#     libiio, libbladeRF, LimeSuite, Hamlib, libairspyhf (shared); the versions of OnAir's cross_deps_windows.sh
 #   <sdk>/locks/, SDK-MANIFEST.txt, LICENSE
 #
-# Nothing is compiled: every library is a binary package of MSYS2, Ubuntu or conda-forge. Ubuntu 26.04's versions
-# are the minimum; the Windows and macOS libraries may be newer (common/check_versions.py checks it). Everything is
-# pinned by the lock files in common/, windows/, linux/ and macos/; the downloads are kept in ./cache. The SDK folder can be moved.
+# The runtimes and system libraries are binary packages of MSYS2, Ubuntu or conda-forge (Ubuntu 26.04's versions are
+# the minimum: common/check_versions.py); OnAir's own libraries are compiled from pinned source archives with the SDK's
+# clang. Everything is pinned by the lock files in common/, windows/, linux/, macos/ and sources/; the downloads and
+# the built libraries are kept in ./cache. The SDK folder can be moved.
 #
 # Usage:  ./make_sdk.sh [-o SDKDIR] [--target windows|linux|rpi5|macos|macos-arm64|macos-x86_64|all] [--update] [--tar]
 #   -o SDKDIR   default: ./sdk next to this script (replaced if it holds SDK-MANIFEST.txt)
@@ -55,6 +59,10 @@ mkdir -p "$OUT/sysroots" "$OUT/locks"; OUT="$(cd "$OUT" && pwd)"
 say "native tools"
 "$SCRIPT_DIR/common/fetch_toolchain.sh" -o "$OUT/sysroots/x86_64-sdk-linux" "${UPDATE[@]}"
 install -m 644 "$SCRIPT_DIR/common/toolchain.lock" "$SCRIPT_DIR/LICENSE" "$OUT/"; mv "$OUT/toolchain.lock" "$OUT/locks/"
+install -m 644 "$SCRIPT_DIR/sources/sources.lock" "$OUT/locks/sources.lock"
+say "packaging tools"
+"$SCRIPT_DIR/common/build_pkgtools.sh" -o "$OUT/sysroots/x86_64-sdk-linux"
+install -m 644 "$SCRIPT_DIR/common/pkgtools.lock" "$OUT/locks/pkgtools.lock"
 
 if want windows; then
   say "Windows target sysroot"
@@ -63,12 +71,14 @@ if want windows; then
     "$SCRIPT_DIR/windows/environment-setup-x86_64-w64-mingw32" "$OUT/"
   install -m 755 "$SCRIPT_DIR/windows/collect_dlls.sh" "$OUT/"
   install -m 644 "$SCRIPT_DIR/windows/sysroot.lock" "$OUT/locks/windows-sysroot.lock"
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target windows
 fi
 if want linux; then
   say "Linux target sysroot"
   "$SCRIPT_DIR/linux/fetch_sysroot.sh" -o "$OUT/sysroots/x86_64-linux-gnu" "${UPDATE[@]}"
   install -m 644 "$SCRIPT_DIR/linux/toolchain-x86_64-linux-gnu.cmake" "$SCRIPT_DIR/linux/environment-setup-x86_64-linux-gnu" "$OUT/"
   install -m 644 "$SCRIPT_DIR/linux/sysroot.lock" "$OUT/locks/linux-sysroot.lock"
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target linux
 fi
 if want rpi5; then
   say "Raspberry Pi 5 target sysroot (Ubuntu 26.04 arm64)"
@@ -77,8 +87,10 @@ if want rpi5; then
   "$SCRIPT_DIR/linux/fetch_sysroot.sh" --arch arm64 -o "$OUT/sysroots/aarch64-linux-gnu" "${UPDATE[@]}" "${SNAP[@]}"
   install -m 644 "$SCRIPT_DIR/linux/toolchain-aarch64-linux-gnu.cmake" "$SCRIPT_DIR/linux/environment-setup-aarch64-linux-gnu" "$OUT/"
   install -m 644 "$SCRIPT_DIR/linux/sysroot-arm64.lock" "$OUT/locks/linux-sysroot-arm64.lock"
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target rpi5
 fi
 MAC_ARCHS=()
+LLVM_MAJOR=$(sed -n 's/^LLVM_VERSION=\([0-9]*\)\..*/\1/p' "$SCRIPT_DIR/common/fetch_toolchain.sh")   # compiler-rt's lib/clang/<major>
 for arch in arm64 x86_64; do
   want macos-$arch || continue
   MAC_ARCHS+=($arch)
@@ -87,7 +99,7 @@ for arch in arm64 x86_64; do
   install -m 644 "$SCRIPT_DIR/macos/toolchain-$arch-apple-darwin.cmake" "$SCRIPT_DIR/macos/environment-setup-$arch-apple-darwin" "$OUT/"
   install -m 644 "$SCRIPT_DIR/macos/sysroot-$arch.lock" "$OUT/locks/macos-sysroot-$arch.lock"
   # clang run as <arch>-apple-darwin-clang(++) reads llvm/bin/<arch>-apple-darwin.cfg: this sysroot, its deployment target,
-  # conda-forge's libc++ and ld64.lld (paths relative to the file, so the SDK can move)
+  # conda-forge's libc++, ld64.lld and compiler-rt's builtins (paths relative to the file, so the SDK can move)
   min=$(sed -n 's/^macos-min //p' "$SCRIPT_DIR/macos/sysroot-$arch.lock")
   N="$OUT/sysroots/x86_64-sdk-linux"
   cat > "$N/llvm/bin/$arch-apple-darwin.cfg" <<CFG
@@ -99,8 +111,11 @@ for arch in arm64 x86_64; do
 -D_LIBCPP_DISABLE_AVAILABILITY
 -L<CFGDIR>/../../../$arch-apple-darwin/usr/local/lib
 -fuse-ld=lld
+-Wl,<CFGDIR>/../../../$arch-apple-darwin/usr/local/lib/clang/${LLVM_MAJOR}/lib/darwin/libclang_rt.osx.a
 CFG
   ln -sf ../llvm/bin/clang "$N/bin/$arch-apple-darwin-clang"; ln -sf ../llvm/bin/clang "$N/bin/$arch-apple-darwin-clang++"
+  install -m 644 "$SCRIPT_DIR/macos/toolchain-apple-darwin-common.cmake" "$OUT/"   # (the toolchain files read it)
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target macos-$arch
 done
 if [ ${#MAC_ARCHS[@]} -gt 0 ]; then
   install -m 644 "$SCRIPT_DIR/macos/toolchain-apple-darwin-common.cmake" "$SCRIPT_DIR/macos/macho.py" "$OUT/"
@@ -119,7 +134,9 @@ python3 -I "$SCRIPT_DIR/common/check_versions.py" "$SCRIPT_DIR/linux/sysroot.loc
     [ -f "$OUT/sysroots/$t/SYSROOT-MANIFEST.txt" ] || continue
     echo; sed -n '1,7p' "$OUT/sysroots/$t/SYSROOT-MANIFEST.txt" | sed 's/^/  /'
   done
-  echo; echo "  FFmpeg: the GPL builds of MSYS2 (Windows), Ubuntu (Linux, Raspberry Pi 5) and conda-forge (macOS)"
+  for t in x86_64-w64-mingw32 x86_64-linux-gnu aarch64-linux-gnu arm64-apple-darwin x86_64-apple-darwin; do
+    [ -f "$OUT/sysroots/$t/SOURCES-MANIFEST.txt" ] && { echo; echo "  $t:"; sed 's/^/  /' "$OUT/sysroots/$t/SOURCES-MANIFEST.txt"; }
+  done
   echo; sed 's/^/  /' "$OUT/VERSIONS.txt"
   echo
   echo "The binaries in sysroots/ are third-party software under their own licences: LLVM (Apache-2.0 WITH LLVM-exception),"
@@ -127,7 +144,8 @@ python3 -I "$SCRIPT_DIR/common/check_versions.py" "$SCRIPT_DIR/linux/sysroot.loc
   echo "packages (x86_64-linux-gnu and aarch64-linux-gnu: usr/share/licenses), conda-forge's packages"
   echo "(<arch>-apple-darwin/usr/local/share/licenses) and Apple's"
   echo "macOS SDK (<arch>-apple-darwin: the macOS SDK and Xcode Agreement; not for redistribution, for use on Apple-branded computers)."
-  echo "FFmpeg is the GPL build on every target (for now): a program linking it is distributed under the GPL."
+  echo "The libraries built from source (sources/sources.lock) keep their own licences (sysroots/<target>/.../share/licenses/<name>);"
+  echo "FFmpeg is built as LGPL (no --enable-gpl, --enable-version3 or --enable-nonfree: checked by build_sources.sh)."
   echo "The scripts are GPL-3.0-or-later (LICENSE)."
 } > "$OUT/SDK-MANIFEST.txt"
 

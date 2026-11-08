@@ -4,6 +4,7 @@
     python3 -I macho.py check SYSROOT MACOS_MIN     check the sysroot's libraries (macos/fetch_sysroot.sh runs it)
     python3 -I macho.py deps FILE                   print the dylibs FILE loads, one per line
     python3 -I macho.py collect FILE DEST SYSROOT [EXTRA ...]   copy the dylibs FILE needs (collect_dylibs.sh)
+    python3 -I macho.py bundlecheck APP             check a signed .app: page hashes, bundle seal (no Mac needed; not a substitute for one)
 
 check: every Mach-O file under SYSROOT/usr/local/lib must be built for a macOS no newer than MACOS_MIN
 (LC_BUILD_VERSION / LC_VERSION_MIN_MACOSX), and every dylib it loads must be found: @rpath/<name> in usr/local/lib
@@ -11,7 +12,9 @@ check: every Mach-O file under SYSROOT/usr/local/lib must be built for a macOS n
 Apple SDK, @loader_path/... next to the file. Prints what is wrong and exits 1.
 """
 import fnmatch
+import hashlib
 import os
+import plistlib
 import shutil
 import struct
 import sys
@@ -167,9 +170,102 @@ def collect(exe, dest, sysroot, extra):
     print(f"{copied} dylibs copied to {dest}")
 
 
+def code_directory(path):
+    """-> (the CodeDirectory blob, its fields) of a thin Mach-O file, or None when it has no signature"""
+    with open(path, "rb") as h:
+        data = h.read()
+    if data[:4] not in (b"\xcf\xfa\xed\xfe",):
+        return None
+    ncmds = struct.unpack_from("<I", data, 16)[0]
+    off = 32
+    for _ in range(ncmds):
+        cmd, size = struct.unpack_from("<II", data, off)
+        if cmd == 0x1d:   # LC_CODE_SIGNATURE
+            sig, _sz = struct.unpack_from("<II", data, off + 8)
+            magic, _len, count = struct.unpack_from(">III", data, sig)
+            if magic != 0xfade0cc0:
+                sys.exit(f"{path}: not a code signature superblob")
+            for i in range(count):
+                _slot, o = struct.unpack_from(">II", data, sig + 12 + i * 8)
+                m, length = struct.unpack_from(">II", data, sig + o)
+                if m == 0xfade0c02:   # CodeDirectory
+                    return data, sig + o, length
+            sys.exit(f"{path}: a signature without a CodeDirectory")
+        off += size
+    return None
+
+
+def sigcheck_file(path):
+    """recompute a Mach-O file's page hashes against its signature; -> (bytes, CodeDirectory offset, hash offset, hash size)"""
+    r = code_directory(path)
+    if r is None:
+        sys.exit(f"{path}: no code signature")
+    data, cd, length = r
+    hash_off, _ident, nspecial, ncode, limit = struct.unpack_from(">IIIII", data, cd + 16)
+    hash_size, hash_type, _platform, page_log2 = struct.unpack_from(">BBBB", data, cd + 36)
+    algo = {1: hashlib.sha1, 2: hashlib.sha256}.get(hash_type)
+    if algo is None:
+        sys.exit(f"{path}: hash type {hash_type}")
+    page = 1 << page_log2
+    for i in range(ncode):
+        got = algo(data[i * page:min((i + 1) * page, limit)]).digest()[:hash_size]
+        if got != data[cd + hash_off + i * hash_size:cd + hash_off + (i + 1) * hash_size]:
+            sys.exit(f"{path}: page {i} does not match its signature")
+    return data, cd, hash_off, hash_size, nspecial, length
+
+
+def bundlecheck(app):
+    """an independent check of a signed app (rcodesign verify cannot read ad-hoc signatures): every Mach-O file's page hashes, the main
+    program's links to Info.plist and CodeResources, and every sealed file against CodeResources. Not a substitute for a Mac."""
+    c = os.path.join(app, "Contents")
+    with open(os.path.join(c, "Info.plist"), "rb") as h:
+        main_exe = plistlib.load(h)["CFBundleExecutable"]
+    res_path = os.path.join(c, "_CodeSignature", "CodeResources")
+    with open(res_path, "rb") as h:
+        res_bytes = h.read()
+    with open(os.path.join(c, "Info.plist"), "rb") as h:
+        plist_bytes = h.read()
+    data, cd, hoff, hs, nspecial, _ = sigcheck_file(os.path.join(c, "MacOS", main_exe))
+    special = lambda n: data[cd + hoff - n * hs:cd + hoff - (n - 1) * hs]
+    if nspecial < 3 or special(1) != hashlib.sha256(plist_bytes).digest()[:hs] or special(3) != hashlib.sha256(res_bytes).digest()[:hs]:
+        sys.exit(f"{main_exe}: its signature does not seal Info.plist and CodeResources")
+    machos = 0
+    for root, _d, files in os.walk(c):
+        for f in files:
+            p = os.path.join(root, f)
+            if os.path.islink(p):
+                continue
+            with open(p, "rb") as h:
+                is_macho = h.read(4) == b"\xcf\xfa\xed\xfe"
+            if is_macho:
+                sigcheck_file(p)
+                machos += 1
+    sealed = 0
+    for rel, e in plistlib.loads(res_bytes)["files2"].items():
+        p = os.path.join(c, rel)
+        if not isinstance(e, dict):
+            continue
+        if "symlink" in e:
+            if os.readlink(p) != e["symlink"]:
+                sys.exit(f"{rel}: the symlink is not the one sealed")
+        elif "cdhash" in e:
+            d2, cd2, *_rest = sigcheck_file(p)
+            length = _rest[-1]
+            if hashlib.sha256(d2[cd2:cd2 + length]).digest()[:20] != e["cdhash"]:
+                sys.exit(f"{rel}: its cdhash is not the one sealed")
+        elif "hash2" in e:
+            with open(p, "rb") as h:
+                if hashlib.sha256(h.read()).digest() != e["hash2"]:
+                    sys.exit(f"{rel}: not the file that was sealed")
+        sealed += 1
+    print(f"{app}: {machos} Mach-O files match their signatures, {sealed} files match the bundle seal")
+
+
 def main():
     a = sys.argv[1:]
-    if a[:1] == ["check"] and len(a) == 3:
+    if a[:1] == ["bundlecheck"] and len(a) == 2:
+        bundlecheck(a[1])
+    elif a[:1] == ["check"] and len(a) == 3:
         check(a[1], a[2])
     elif a[:1] == ["deps"] and len(a) == 2:
         for sl in parse(a[1]) or []:
