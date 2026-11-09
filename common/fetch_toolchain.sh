@@ -66,7 +66,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 export GNUPGHOME="$TMP/gnupg"; mkdir -m 700 "$GNUPGHOME"
 mkdir -p "$CACHE/llvm" "$CACHE/rust" "$CACHE/deb"
 sha() { sha256sum "$1" | cut -d' ' -f1; }
-download() { curl -fsSL --retry 3 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
+download() { curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
 
 # --- the lock file ------------------------------------------------------------------------------------------------------
 declare -A LOCKED

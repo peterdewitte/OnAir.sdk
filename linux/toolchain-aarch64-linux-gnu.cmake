@@ -18,6 +18,9 @@
 # sysroots/aarch64-linux-gnu next to this file (the SDK).
 # FFmpeg is Ubuntu 26.04's (8.0.1, the GPL build; libavcodec.so.62): on the target it comes from Ubuntu's packages
 # (libavcodec62 ...), so nothing has to be shipped with the program.
+# for a project that packages itself with the SDK's tools (OnAir's package target)
+set(ONAIR_SDK_PLATFORM linux_arm64)
+set(ONAIR_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(LINUX_TARGET aarch64-linux-gnu)

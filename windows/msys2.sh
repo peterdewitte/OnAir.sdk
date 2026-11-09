@@ -16,7 +16,7 @@ MASTER_KEYS=(
 )
 
 download() {   # url file: download to file (via file.part)
-  curl -fsSL --retry 3 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }
+  curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }
   mv "$2.part" "$2"
 }
 cached() {     # url-folder file sha256: the file in $CACHE, downloaded when missing or wrong; checks the sha256; also file.sig

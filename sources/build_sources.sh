@@ -87,7 +87,7 @@ for n in "${!S_FILE[@]}"; do
   f="$CACHE/src/${S_FILE[$n]}"
   if [ ! -f "$f" ]; then
     say "downloading ${S_FILE[$n]}"
-    curl -fsSL --retry 3 -o "$f.part" "${S_URL[$n]}" || { rm -f "$f.part"; die "download failed: ${S_URL[$n]}"; }
+    curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$f.part" "${S_URL[$n]}" || { rm -f "$f.part"; die "download failed: ${S_URL[$n]}"; }
     mv "$f.part" "$f"
   fi
   [ "$(sha256sum "$f" | cut -d' ' -f1)" = "${S_SHA[$n]}" ] || die "$f: sha256 is not the one in $SRCLOCK"

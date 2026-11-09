@@ -74,7 +74,7 @@ PACKAGES+=("compiler-rt_$SUBDIR=$LLVM_MAJOR.*")
 TRIPLE=$ARCH-apple-darwin
 OUT=${OUT:-$ROOT/$TRIPLE} LOCK=${LOCK:-$SCRIPT_DIR/sysroot-$ARCH.lock}
 for t in curl zstd unzip openssl python3 sha256sum; do command -v $t >/dev/null || die "$t not found (apt install curl zstd unzip openssl python3)"; done
-download() { curl -fsSL --retry 3 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
+download() { curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 PY="python3 -I"
 

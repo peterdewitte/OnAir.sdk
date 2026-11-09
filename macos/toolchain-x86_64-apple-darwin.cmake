@@ -6,5 +6,8 @@
 #   cmake -S <src> -B <build> -G Ninja -DCMAKE_TOOLCHAIN_FILE=<this file> [-DCMAKE_OSX_SYSROOT=<sysroot>] ...
 #
 # Everything else is in toolchain-apple-darwin-common.cmake (next to this file).
+# for a project that packages itself with the SDK's tools (OnAir's package target)
+set(ONAIR_SDK_PLATFORM macos_amd64)
+set(ONAIR_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 set(MACOS_ARCH x86_64)
 include("${CMAKE_CURRENT_LIST_DIR}/toolchain-apple-darwin-common.cmake")

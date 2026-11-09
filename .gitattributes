@@ -1,0 +1,3 @@
+# A Windows checkout must keep Unix line endings: the scripts run in a Linux container or WSL
+* text=auto eol=lf
+*.bat text eol=crlf

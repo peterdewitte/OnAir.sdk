@@ -78,7 +78,7 @@ case "$ARCH" in
 esac
 : "${OUT:=$ROOT/$TRIPLE}"
 for t in curl gpg gpgv xz dpkg-deb python3 sha256sum; do command -v $t >/dev/null || die "$t not found (apt install curl gpg gpgv xz-utils python3)"; done
-download() { curl -fsSL --retry 3 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
+download() { curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$2.part" "$1" || { rm -f "$2.part"; die "download failed: $1"; }; mv "$2.part" "$2"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT

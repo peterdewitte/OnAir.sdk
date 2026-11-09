@@ -20,6 +20,9 @@
 #   WIN_STATIC=ON        link with -static: libgcc, libstdc++, winpthreads and every -lX library from its libX.a (default
 #                        OFF: DLLs, as in a native MSYS2 build; keep it OFF when C++ DLLs such as SoapySDR's are used,
 #                        they must share one C++ runtime DLL with the program)
+# for a project that packages itself with the SDK's tools (OnAir's package target)
+set(ONAIR_SDK_PLATFORM windows)
+set(ONAIR_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 set(TOOLCHAIN_PREFIX x86_64-w64-mingw32)   # the binutils tools; OnAir's cmake/FfmpegDelayLoad.cmake looks for ${TOOLCHAIN_PREFIX}-dlltool

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# make_sdk.sh - make the cross SDK on Linux x86-64, laid out like a Yocto SDK: one set of native tools (clang/lld 23,
+# make_sdk.sh - the inner step of build_sdk.sh: make the cross SDK on Linux x86-64, laid out like a Yocto SDK: one set of native tools (clang/lld 23,
 # Rust, ...) and a target sysroot per target, each with its environment-setup script and CMake toolchain file.
 # Targets: Windows x64, Linux x86-64, Raspberry Pi 5 (Ubuntu 26.04 arm64), macOS arm64 (Apple silicon) and macOS x86_64 (Intel).
 #
@@ -30,31 +30,35 @@
 #
 # Usage:  ./make_sdk.sh [-o SDKDIR] [--target windows|linux|rpi5|macos|macos-arm64|macos-x86_64|all] [--update] [--tar]
 #   -o SDKDIR   default: ./sdk next to this script (replaced if it holds SDK-MANIFEST.txt)
-#   --target    which target sysroots (default: all)
+#   --target    which target sysroots, comma separated: --target windows,rpi5 (default: all)
 #   --update    re-resolve the lock files (newest packages; the versions set at the top of the scripts)
 #   --tar       also write SDKDIR.tar.zst, to carry the SDK to other machines
+#   --keep-work keep the libraries' build folders in cache/work
 set -Eeuo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUT="$SCRIPT_DIR/sdk" TARGET=all UPDATE=() TAR=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # (the repository)
+OUT="$SCRIPT_DIR/sdk" TARGET=all UPDATE=() TAR=0 WORK=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) OUT="$2"; shift 2;;
     --target) TARGET="$2"; shift 2;;
     --update) UPDATE=(--update); shift;;
     --tar) TAR=1; shift;;
+    --keep-work) WORK=(--keep-work); shift;;
     -h|--help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0;;
     *) echo "unknown argument $1 (see --help)" >&2; exit 2;;
   esac
 done
-case "$TARGET" in windows|linux|rpi5|macos|macos-arm64|macos-x86_64|all) ;; *) echo "--target windows, linux, rpi5, macos, macos-arm64, macos-x86_64 or all" >&2; exit 2;; esac
-want() { [ "$TARGET" = all ] || [ "$TARGET" = "$1" ] || { [ "$TARGET" = macos ] && [ "${1%-*}" = macos ]; }; }
+for t in ${TARGET//,/ }; do case "$t" in windows|linux|rpi5|macos|macos-arm64|macos-x86_64|all) ;; *) echo "--target windows, linux, rpi5, macos, macos-arm64, macos-x86_64 or all, comma separated" >&2; exit 2;; esac; done
+want() { local t; for t in ${TARGET//,/ }; do if [ "$t" = all ] || [ "$t" = "$1" ] || { [ "$t" = macos ] && [ "${1%-*}" = macos ]; }; then return 0; fi; done; return 1; }
 say() { echo; echo "=== $*"; }
 
 if [ -e "$OUT" ]; then
-  if [ -f "$OUT/SDK-MANIFEST.txt" ] || [ -z "$(ls -A "$OUT")" ]; then rm -rf "$OUT"
+  # (.made-by-make_sdk: a run that failed halfway has no manifest yet, and must not stop the next run)
+  if [ -f "$OUT/SDK-MANIFEST.txt" ] || [ -f "$OUT/.made-by-make_sdk" ] || [ -z "$(ls -A "$OUT")" ]; then rm -rf "$OUT"
   else echo "error: $OUT exists and was not made by this script: remove it or choose another -o" >&2; exit 1; fi
 fi
 mkdir -p "$OUT/sysroots" "$OUT/locks"; OUT="$(cd "$OUT" && pwd)"
+: > "$OUT/.made-by-make_sdk"
 
 say "native tools"
 "$SCRIPT_DIR/common/fetch_toolchain.sh" -o "$OUT/sysroots/x86_64-sdk-linux" "${UPDATE[@]}"
@@ -71,14 +75,15 @@ if want windows; then
     "$SCRIPT_DIR/windows/environment-setup-x86_64-w64-mingw32" "$OUT/"
   install -m 755 "$SCRIPT_DIR/windows/collect_dlls.sh" "$OUT/"
   install -m 644 "$SCRIPT_DIR/windows/sysroot.lock" "$OUT/locks/windows-sysroot.lock"
-  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target windows
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target windows "${WORK[@]}"
 fi
 if want linux; then
   say "Linux target sysroot"
   "$SCRIPT_DIR/linux/fetch_sysroot.sh" -o "$OUT/sysroots/x86_64-linux-gnu" "${UPDATE[@]}"
   install -m 644 "$SCRIPT_DIR/linux/toolchain-x86_64-linux-gnu.cmake" "$SCRIPT_DIR/linux/environment-setup-x86_64-linux-gnu" "$OUT/"
   install -m 644 "$SCRIPT_DIR/linux/sysroot.lock" "$OUT/locks/linux-sysroot.lock"
-  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target linux
+  python3 -I "$SCRIPT_DIR/common/make_shlibs.py" "$SCRIPT_DIR/linux/sysroot.lock" "$SCRIPT_DIR/cache/ubuntu" > "$OUT/deb-shlibs.txt"
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target linux "${WORK[@]}"
 fi
 if want rpi5; then
   say "Raspberry Pi 5 target sysroot (Ubuntu 26.04 arm64)"
@@ -87,7 +92,8 @@ if want rpi5; then
   "$SCRIPT_DIR/linux/fetch_sysroot.sh" --arch arm64 -o "$OUT/sysroots/aarch64-linux-gnu" "${UPDATE[@]}" "${SNAP[@]}"
   install -m 644 "$SCRIPT_DIR/linux/toolchain-aarch64-linux-gnu.cmake" "$SCRIPT_DIR/linux/environment-setup-aarch64-linux-gnu" "$OUT/"
   install -m 644 "$SCRIPT_DIR/linux/sysroot-arm64.lock" "$OUT/locks/linux-sysroot-arm64.lock"
-  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target rpi5
+  python3 -I "$SCRIPT_DIR/common/make_shlibs.py" "$SCRIPT_DIR/linux/sysroot-arm64.lock" "$SCRIPT_DIR/cache/ubuntu" > "$OUT/deb-shlibs.txt"
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target rpi5 "${WORK[@]}"
 fi
 MAC_ARCHS=()
 LLVM_MAJOR=$(sed -n 's/^LLVM_VERSION=\([0-9]*\)\..*/\1/p' "$SCRIPT_DIR/common/fetch_toolchain.sh")   # compiler-rt's lib/clang/<major>
@@ -115,7 +121,7 @@ for arch in arm64 x86_64; do
 CFG
   ln -sf ../llvm/bin/clang "$N/bin/$arch-apple-darwin-clang"; ln -sf ../llvm/bin/clang "$N/bin/$arch-apple-darwin-clang++"
   install -m 644 "$SCRIPT_DIR/macos/toolchain-apple-darwin-common.cmake" "$OUT/"   # (the toolchain files read it)
-  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target macos-$arch
+  "$SCRIPT_DIR/sources/build_sources.sh" --sdk "$OUT" --target macos-$arch "${WORK[@]}"
 done
 if [ ${#MAC_ARCHS[@]} -gt 0 ]; then
   install -m 644 "$SCRIPT_DIR/macos/toolchain-apple-darwin-common.cmake" "$SCRIPT_DIR/macos/macho.py" "$OUT/"

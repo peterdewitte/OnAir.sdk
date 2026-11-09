@@ -49,6 +49,7 @@ if [ -f "$BUILT" ]; then
   rm -rf "$OUT/pkgtools"; tar -I zstd -xf "$BUILT" -C "$OUT"; links; exit 0
 fi
 
+mkdir -p "$CACHE/work"
 WORK=$(mktemp -d "$CACHE/work/pkgtools.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
 P="$WORK/pkgtools"; mkdir -p "$P/bin" "$P/share/licenses" "$CACHE/deb" "$CACHE/src"
 UNPACK="$WORK/debs"; mkdir -p "$UNPACK"
@@ -65,7 +66,7 @@ while read -r kind name ver file rest; do
     src)   # name, commit, archive name, "url sha256"
       read -r url sha <<<"$rest"
       f="$CACHE/src/$file"
-      [ -f "$f" ] || { say "downloading $name $ver"; curl -fsSL --retry 3 -o "$f.part" "$url" && mv "$f.part" "$f"; }
+      [ -f "$f" ] || { say "downloading $name $ver"; curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o "$f.part" "$url" && mv "$f.part" "$f"; }
       [ "$(sha256sum "$f" | cut -d' ' -f1)" = "$sha" ] || die "$f: sha256 is not the one in $LOCK"
       mkdir -p "$WORK/$name"; tar -xf "$f" -C "$WORK/$name" --strip-components=1;;
     crate) RC_VERSION=$ver;;

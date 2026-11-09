@@ -1,8 +1,10 @@
 # binaries (third-party): only the scripts and the lock files are published
-/sdk/
 /cache/
+/build/
+/kept_sources/
+/installers/
+/sdk_*.tar.gz
+/SHA256SUMS
 *.tar.zst
 *.stage.*
 __pycache__/
-/OnAir/
-/packages/
