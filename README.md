@@ -19,6 +19,8 @@ The script guides you through the available choices and gives the option to star
 ./build_sdk.sh                          # asks what to build
 ```
 
+The SDKs are made in `build/out`. When the script ends, the finished `sdk_<platform>.tar.gz` files are moved to this folder.
+
 The script can also build OnAir and its installers for these SDKs right away: it asks, or use `--build-onair`. The installers end up in `installers/`.
 
 For Windows users: please consider using Linux in WSL2 ([how to install Ubuntu 26.04 in WSL2](docs/WSL2.md)).
