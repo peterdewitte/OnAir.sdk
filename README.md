@@ -121,15 +121,49 @@ writes FFmpeg's configuration to `share/licenses/ffmpeg/CONFIGURATION.txt`). lib
 
 ---
 
+## Build everything in Docker
+
+One command builds the SDK and OnAir for every platform and packages them, on any Linux machine with Docker:
+
+```bash
+docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t onair-sdk .
+docker run --rm --init -v "$PWD":/work onair-sdk
+```
+
+The installers end up in `./packages`, with `SHA256SUMS`: `OnAir-<v>-windows-x64-setup.exe` and `.zip`, `onair_<v>_amd64.deb`, `onair_<v>_arm64.deb`, `OnAir-<v>-macos-arm64.dmg`, `OnAir-<v>-macos-x86_64.dmg`.
+
+* It runs `build.sh` in Ubuntu 26.04: `checkout_onair.sh` puts OnAir's `clang_and_packaging` branch in `./OnAir`, `make_sdk.sh` makes `./sdk`, and each platform is built and packaged in turn.
+* With a filled `./cache`, a full run takes about an hour (60 minutes at `-j14`, 16 threads). `./cache` is kept on your disk, so later runs reuse the downloads and built libraries. An empty cache means a longer first run and internet access; that case has not been timed or tested.
+* Limit the load with `docker run -e JOBS=8 ...` (default: all threads but two).
+* One step only: `docker run --rm --init -v "$PWD":/work onair-sdk ./build.sh windows`. The steps are `checkout sdk windows linux-amd64 linux-arm64 macos-arm64 macos-x86_64 collect`.
+* Start over, keeping the cache: `./build.sh clean`, or the same through `docker run`.
+* `OnAir/`, `packages/`, `sdk/` and `cache/` are ignored by git.
+* Without Docker: install the packages of section 1, then `./build.sh`. The commands of each platform are written out in `build.sh`.
+* A package cannot be tested here: nothing built this way has run on a real Mac, Windows PC or Raspberry Pi yet.
+
+## Why clang
+
+Full figures, and the test results: [reports/CLANG-BUILD-REPORT.md](reports/CLANG-BUILD-REPORT.md). Packaging plan: [reports/SDK-PACKAGING.md](reports/SDK-PACKAGING.md).
+
+* **Reproducible across architectures.** One compiler and one pinned set of libraries for all 5 targets, built on one machine, where today every platform has its own compiler and library versions. Building `onair-server` twice gave a bit-for-bit identical program on Linux. Windows differs in 6 bytes of 75.8 MB and macOS arm64 in 484 of 58.1 MB, so those are close but not there yet.
+* **Speed.** A clean Linux build of OnAir and all tests takes about 900 s with clang against about 1450 s with GCC (`-j16`, no ccache): 38% less time, 42% less CPU, half the peak memory. The test suite's summed run time is about 8% lower. These runs compare toolchains, including the linker and libraries, not just the compilers.
+* **Code safety checks.** Clang rejected code that GCC accepted, such as a narrowing conversion in `test_hfdl_proto_rs.cpp` and missing includes. It brings the sanitizers and `clang-tidy`, one of the C/C++ tools Codacy can run. In OnAir's current Codacy setup `clang-tidy` is off (Flawfinder, Cppcheck, Opengrep and Lizard run), so a clean clang build is a separate check for now, not the Codacy gate.
+
+**Not settled yet:** 7 tests fail on clang only, also when run alone, with no cause established yet (4 fail on GCC only). See the report before releasing from this.
+
+---
+
 ## 1. On the Ubuntu 26.04 build machine
 
 ```bash
-sudo apt install cmake ninja-build pkgconf git curl zstd xz-utils unzip gpg gpgv python3 make perl nasm patch libwayland-bin
+sudo apt install cmake ninja-build pkgconf git curl zstd xz-utils unzip gpg gpg-agent gpgv python3 make perl nasm patch libwayland-bin gcc g++ zlib1g-dev liblzma-dev bzip2 binutils file zip
 #   cmake ninja-build pkgconf          the builds (CMake 3.21+ reads CMAKE_TOOLCHAIN_FILE from the environment)
 #   curl zstd xz-utils unzip gpg gpgv  make_sdk.sh: download, unpack, check signatures
 #   python3                            make_sdk.sh: the Ubuntu dependency resolver and the version check
 #   make perl nasm patch               sources/build_sources.sh: configure scripts (OpenSSL's is Perl), FFmpeg's x86 assembly
 #   libwayland-bin                     wayland-scanner, for GLFW's Wayland support (Linux targets)
+#   gcc g++ zlib1g-dev liblzma-dev     common/build_pkgtools.sh: libdmg-hfsplus and rcodesign, built for this machine
+#   binutils file zip                  OnAir's package scripts
 # optional: run the Windows programs and tests on Linux
 sudo apt install wine
 ```

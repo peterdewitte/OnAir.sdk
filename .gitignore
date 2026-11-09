@@ -4,3 +4,5 @@
 *.tar.zst
 *.stage.*
 __pycache__/
+/OnAir/
+/packages/
