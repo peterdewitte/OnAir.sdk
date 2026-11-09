@@ -19,11 +19,11 @@ Each one is made on its own and holds its own clang 23, its own target system (t
 | `--windows` `--linux_amd64` `--linux_arm64` `--macos_amd64` `--macos_arm64` | The SDKs to make. Without any, it asks. |
 | `--docker` | Build in the safe container: no root, no Linux capabilities, a pinned base image, and this folder read-only except `cache/` and `build/`. |
 | `--keep-sources` | Keep unpacked copies of the libraries' sources in `kept_sources/`, as downloaded. Default: no. |
-| `--keep-build-artif` | Keep the build folders in `build/` and `cache/work/`. Default: each is deleted as soon as it is done with. |
+| `--keep-build-artif` | Keep the unpacked SDK in `build/` and, for libraries compiled in this run, their build folders in `cache/work/`. Libraries that come from `cache/built/` have no build folder. Default: each is deleted as soon as it is done with. |
 | `--build-onair` | Afterwards, check out OnAir's `clang_and_packaging` branch and build its installers with these SDKs, into `installers/`, with a status table every 10 seconds. OnAir's build folders are deleted as soon as each platform is done. |
 | `--dry-run` | Show what would happen (`build_sdk.sh` only). |
 
-* Without arguments, the script asks which SDKs to make, whether to build in the Docker safe build (default: no on Ubuntu 26.04, yes elsewhere), whether to keep the sources, and whether to build OnAir afterwards.
+* Without arguments, the script asks which SDKs to make, whether to build in the Docker safe build (default: no on Ubuntu 26.04, yes elsewhere), whether to keep the build artifacts, and whether to build OnAir afterwards.
 * The tarballs and a `SHA256SUMS` file end up in the top folder.
 * `cache/` is never deleted, so a second run reuses the downloads and the built libraries. Every download is checked against the hash in the lock files.
 * To limit the CPUs, run it under `taskset`. A Docker build takes over the same CPUs: `taskset -c 4-7 ./build_sdk.sh --docker --windows`.

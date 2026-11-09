@@ -71,7 +71,7 @@ if [ ${#CHOSEN[@]} -eq 0 ]; then
     default=y; if on_ubuntu_2604; then default=n; fi
     if ask_yes "Build in the Docker \"safe build\"?" "$default"; then DOCKER=1; fi
   fi
-  if [ "$KEEP_SOURCES" = 0 ] && ask_yes "Keep the sources of the built packages?" n; then KEEP_SOURCES=1; fi
+  if [ "$KEEP_BUILD" = 0 ] && ask_yes "Keep the build artifacts of the SDK packages?" n; then KEEP_BUILD=1; fi
   if [ "$BUILD_ONAIR" = 0 ] && ask_yes "Do you want to build OnAir for these SDKs, after they are made?" n; then BUILD_ONAIR=1; fi
 fi
 # each once, in the usual order

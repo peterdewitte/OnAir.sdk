@@ -51,6 +51,8 @@ fi
 
 mkdir -p "$CACHE/work"
 WORK=$(mktemp -d "$CACHE/work/pkgtools.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
+# run <command...>: its output, with the compilers' warnings, goes to a log; when it fails, the end of the log is shown and everything stops
+run() { "$@" >> "$WORK/log" 2>&1 || { echo "---- the end of the log:" >&2; tail -40 "$WORK/log" >&2; die "failed: $*"; }; }
 P="$WORK/pkgtools"; mkdir -p "$P/bin" "$P/share/licenses" "$CACHE/deb" "$CACHE/src"
 UNPACK="$WORK/debs"; mkdir -p "$UNPACK"
 while read -r kind name ver file rest; do
@@ -81,15 +83,15 @@ for n in nsis hfsprogs; do mkdir -p "$P/share/licenses/$n"; cp "$UNPACK/usr/shar
 say "libdmg-hfsplus"
 BZ=$(find "$UNPACK" -name libbz2.a -print -quit); [ -n "$BZ" ] || die "no libbz2.a in libbz2-dev"
 # OpenSSL only decrypts images, which these packages do not use; the sources say -lbz2, so the folder goes to the linker as well
-cmake -S "$WORK/libdmg-hfsplus" -B "$WORK/dmg-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
-  "-DBZIP2_INCLUDE_DIR=$UNPACK/usr/include" "-DBZIP2_LIBRARY_RELEASE=$BZ" "-DCMAKE_EXE_LINKER_FLAGS=-L$(dirname "$BZ")" >/dev/null
-cmake --build "$WORK/dmg-build" -j"$(nproc)" --target dmg-bin hfsplus >/dev/null
+run cmake -S "$WORK/libdmg-hfsplus" -B "$WORK/dmg-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
+  "-DBZIP2_INCLUDE_DIR=$UNPACK/usr/include" "-DBZIP2_LIBRARY_RELEASE=$BZ" "-DCMAKE_EXE_LINKER_FLAGS=-L$(dirname "$BZ")"
+run cmake --build "$WORK/dmg-build" -j"$(nproc)" --target dmg-bin hfsplus
 cp "$WORK/dmg-build/dmg/dmg" "$WORK/dmg-build/hfs/hfsplus" "$P/bin/"
 mkdir -p "$P/share/licenses/libdmg-hfsplus"; cp "$WORK/libdmg-hfsplus/LICENSE" "$P/share/licenses/libdmg-hfsplus/"
 
 say "rcodesign (apple-codesign $RC_VERSION)"
 # --locked: the versions of the crate's own Cargo.lock; cargo checks each crate against the registry's checksum
-CARGO_HOME="$CACHE/cargo" CARGO_TARGET_DIR="$WORK/rc-build" "$OUT/bin/cargo" install apple-codesign --version "$RC_VERSION" --locked --no-default-features --root "$WORK/rc" --quiet
+run env CARGO_HOME="$CACHE/cargo" CARGO_TARGET_DIR="$WORK/rc-build" "$OUT/bin/cargo" install apple-codesign --version "$RC_VERSION" --locked --no-default-features --root "$WORK/rc" --quiet
 cp "$WORK/rc/bin/rcodesign" "$P/bin/"
 mkdir -p "$P/share/licenses/apple-codesign"
 cp "$(find "$CACHE/cargo/registry/src" -maxdepth 2 -type d -name "apple-codesign-$RC_VERSION" -print -quit)"/LICENSE* "$P/share/licenses/apple-codesign/" 2>/dev/null || \
