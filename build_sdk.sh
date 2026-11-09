@@ -40,8 +40,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# native means this machine can make an SDK itself: Linux with apt, not WSL
-native_linux() { [ "$(uname -s)" = Linux ] && ! grep -qi microsoft /proc/version 2>/dev/null; }
+# Ubuntu 26.04 is what the SDK is made on, also in WSL: there the Docker question defaults to no, everywhere else to yes
+on_ubuntu_2604() { [ "$(uname -s)" = Linux ] && [ -r /etc/os-release ] && ( . /etc/os-release; [ "${ID:-}" = ubuntu ] && [ "${VERSION_ID:-}" = 26.04 ] ); }
 
 ask_yes() {   # <question> <default y|n>
   local a hint='[y/N]'; [ "$2" = y ] && hint='[Y/n]'
@@ -67,9 +67,9 @@ if [ ${#CHOSEN[@]} -eq 0 ]; then
     done
     [ "$ok" = 1 ] && [ ${#CHOSEN[@]} -gt 0 ] && break
   done
-  if [ "$ASKED_DOCKER" = 0 ] && ! native_linux; then
-    echo "This is not a native Linux system, so the SDK has to be made in a container or in a Linux such as WSL."
-    if ask_yes "Use the Docker \"safe build\"?" y; then DOCKER=1; fi
+  if [ "$ASKED_DOCKER" = 0 ]; then
+    default=y; if on_ubuntu_2604; then default=n; fi
+    if ask_yes "Build in the Docker \"safe build\"?" "$default"; then DOCKER=1; fi
   fi
   if [ "$KEEP_SOURCES" = 0 ] && ask_yes "Keep the sources of the built packages?" n; then KEEP_SOURCES=1; fi
   if [ "$BUILD_ONAIR" = 0 ] && ask_yes "Do you want to build OnAir for these SDKs, after they are made?" n; then BUILD_ONAIR=1; fi

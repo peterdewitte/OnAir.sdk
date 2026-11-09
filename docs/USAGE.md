@@ -23,7 +23,7 @@ Each one is made on its own and holds its own clang 23, its own target system (t
 | `--build-onair` | Afterwards, check out OnAir's `clang_and_packaging` branch and build its installers with these SDKs, into `installers/`, with a status table every 10 seconds. OnAir's build folders are deleted as soon as each platform is done. |
 | `--dry-run` | Show what would happen (`build_sdk.sh` only). |
 
-* Without arguments, the script asks which SDKs to make, whether to keep the sources, and whether to build OnAir afterwards. If this is not a native Linux system, it also asks whether to use the Docker safe build.
+* Without arguments, the script asks which SDKs to make, whether to build in the Docker safe build (default: no on Ubuntu 26.04, yes elsewhere), whether to keep the sources, and whether to build OnAir afterwards.
 * The tarballs and a `SHA256SUMS` file end up in the top folder.
 * `cache/` is never deleted, so a second run reuses the downloads and the built libraries. Every download is checked against the hash in the lock files.
 * To limit the CPUs, run it under `taskset`. A Docker build takes over the same CPUs: `taskset -c 4-7 ./build_sdk.sh --docker --windows`.
