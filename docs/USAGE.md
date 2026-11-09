@@ -105,7 +105,7 @@ environment_<arch>.sh    source this
 
 **Do not publish the macOS tarballs.** They contain Apple's SDK, which Apple's terms do not allow redistributing and limit to Apple-branded computers. Each user should make their own with this script.
 
-The other tarballs also need licence work before they are shared: licence texts and the corresponding source of the GPL and LGPL parts (see `.claude/STATUS.md`). The scripts in this repository are fine to share.
+The other tarballs also need licence work before they are shared: licence texts and the corresponding source of the GPL and LGPL parts. The scripts in this repository are fine to share.
 
 ## Other documents
 
