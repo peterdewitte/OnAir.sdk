@@ -142,7 +142,7 @@ What it costs or does not solve:
 
 - **It cannot run what it builds.** You still need the real Windows, Pi or Mac to test on.
 - **Someone has to maintain it:** 4.5 GB of SDK, 2.9 GB of cache, and lock-file updates.
-- **Licences:** Apple's SDK terms apply, and redistributing the SDK itself is not yet licence-compliant (`STATUS.md`). Sharing the scripts is fine.
+- **Licences:** Apple's SDK terms apply, and redistributing the SDK itself is not yet licence-compliant: licence texts and corresponding source are missing. Sharing the scripts is fine.
 - **A new toolchain can change behaviour.** See the 7 clang-only failures above.
 
 ## Windows build by hand
@@ -251,7 +251,7 @@ So today: same inputs on all targets, and bit-for-bit identical on Linux only.
 
 ### Built: all architectures
 
-Version 3.6.0, source `feature_sdk_packaging`. In `~/onair/OnAir/.claude/worktrees/clang-sdk-build/packages/`, with `SHA256SUMS`, built by `tools/package/sdk/all.sh` at `-j14` using only tools from the SDK.
+Version 3.6.0, source `feature_sdk_packaging`, since then on OnAir's `clang_and_packaging` branch. Built by `tools/package/sdk/all.sh` at `-j14` using only tools from the SDK. These packages are no longer kept: `build_sdk.sh --build-onair` makes them again, in `installers/`.
 
 | File | Target | Size | State |
 |---|---|---|---|
@@ -299,7 +299,7 @@ Version 3.6.0, source `feature_sdk_packaging`. In `~/onair/OnAir/.claude/worktre
 
 ## Packaging commits
 
-`feature_sdk_packaging`, on top of `fix/clang-sdk-all-targets`, local only:
+Now on OnAir's `clang_and_packaging` branch:
 
 - `tools/package/sdk/`: `common.sh`, `windows.sh`, `deb.sh`, `deb_depends.py`, `dmg.sh`, `all.sh`
 - `source_soapy.cpp`: Linux finds the module in `../lib/onair/SoapySDR/modules0.8`
@@ -314,12 +314,12 @@ The old scripts were not changed. The SDK folder holds its own changes, uncommit
 - `sens_full` and the rest of the first clang `-j4` run were stopped at your request. `session_bench`, `session_soak_10min` and `dvbt_usb_drops` ran in the `-j 10` runs instead.
 - Tests on Windows, Pi and macOS, at your request.
 - The summed times are from one run per compiler.
-- The sysroot repo is still uncommitted, as the previous session left it. `.claude/STATUS.md` there is now updated. `toolchain-x86_64-linux-gnu.cmake` also still says FFmpeg comes from Ubuntu in its header comment, which is out of date.
+- `toolchain-x86_64-linux-gnu.cmake` also still says FFmpeg comes from Ubuntu in its header comment, which is out of date.
 
 ## Where things are
 
-- Build logs, per-test results (`*.ctest.xml`), `failed-*.txt`: `~/onair/OnAir/.claude/worktrees/clang-sdk-build/report/` (uncommitted).
-- Builds: the same worktree, `build-pkg-*` (the packages) and `build-gcc`, `build-linux`, `build-win`, `build-rpi5`, `build-mac-arm64`, `build-mac-x86_64`, 124 GB in total.
+- Build logs, per-test results (`*.ctest.xml`), `failed-*.txt`: `~/onair/clang-build-logs/` on the build machine, not in git.
+- The build folders of these runs have been removed.
 
 ## Recommended next steps
 

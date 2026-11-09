@@ -111,7 +111,7 @@ linux/
   sysroot.lock  sysroot-arm64.lock   the archive snapshot, the minimum versions and the exact packages (x86-64, Pi 5)
   toolchain-x86_64-linux-gnu.cmake  environment-setup-x86_64-linux-gnu
   toolchain-aarch64-linux-gnu.cmake  environment-setup-aarch64-linux-gnu
-LICENSE (GPL-3.0-or-later, like OnAir), .gitignore, README.md, .claude/STATUS.md (work status)
+LICENSE (GPL-3.0-or-later, like OnAir), .gitignore, README.md
 sdk/, sdk.tar.zst            the SDK (6.3 GB): not published, binaries
 cache/                       the downloads (llvm, msys2, rust, deb, ubuntu, apple, conda, src) and the libraries built from
                              source (built/<triple>-<key>.tar.zst): not published; rebuilds need no network
@@ -422,7 +422,7 @@ split into `common/`, `windows/` and `linux/`.
   marinevhf_channels pass. `test_specx_idmatrix --quick` gets every identification right but misses 2 timing limits
   (`identify()` 191 ms average against 150, 726 ms worst against 500; without `DECT2_WIN_AVX2`, run through WSL).
 * **OnAir for Linux** with an earlier SDK: configure found every library; the build stopped at one clang error in
-  OnAir (5.3). OnAir has not been built with this SDK version yet (see `.claude/STATUS.md`).
+  OnAir (5.3). OnAir has not been built with this SDK version yet.
 
 ### 5.5 GPL FFmpeg everywhere, Raspberry Pi 5 (2026-11-07)
 
