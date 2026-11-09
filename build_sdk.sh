@@ -44,10 +44,18 @@ done
 # Ubuntu 26.04 is what the SDK is made on, also in WSL: there the Docker question defaults to no, everywhere else to yes
 on_ubuntu_2604() { [ "$(uname -s)" = Linux ] && [ -r /etc/os-release ] && ( . /etc/os-release; [ "${ID:-}" = ubuntu ] && [ "${VERSION_ID:-}" = 26.04 ] ); }
 
-ask_yes() {   # <question> <default y|n>
-  local a hint='[y/N]'; [ "$2" = y ] && hint='[Y/n]'
-  read -r -p "$1 $hint " a || a=
-  a=${a:-$2}; case "$a" in y|Y|yes|YES) return 0;; *) return 1;; esac
+ask_yes() {   # <question> <default y|n> <explanation, shown for ?>
+  local a hint='[y/N/?]'; [ "$2" = y ] && hint='[Y/n/?]'
+  while :; do
+    read -r -p "$1 $hint " a || a=
+    a=${a:-$2}
+    case "$a" in
+      y|Y|yes|YES) return 0;;
+      n|N|no|NO) return 1;;
+      '?') printf '%s\n' "$3" | sed 's/^/  /';;
+      *) echo "  Please answer y or n, or ? for an explanation.";;
+    esac
+  done
 }
 
 if [ ${#CHOSEN[@]} -eq 0 ]; then
@@ -57,7 +65,15 @@ if [ ${#CHOSEN[@]} -eq 0 ]; then
   for i in "${!ALL[@]}"; do printf '  %d) %-12s %s\n' $((i + 1)) "${ALL[$i]}" "${DESC[$i]}"; done
   echo "  a) all of them"
   while :; do
-    read -r -p "Numbers separated by spaces, or a: " answer || die "no answer"
+    read -r -p "Numbers separated by spaces, a for all, ? for an explanation: " answer || die "no answer"
+    if [ "$answer" = '?' ]; then
+      cat <<'HELP' | sed 's/^/  /'
+An SDK holds a compiler and libraries to build OnAir for one target platform. All of them run on Linux x86-64.
+Each one takes about 5 minutes the first time plus its downloads, and about 1 minute once cache/ is filled.
+Each tarball is about 800 MB. For example, 1 3 makes the Windows and the Linux arm64 SDK.
+HELP
+      continue
+    fi
     CHOSEN=(); ok=1
     for w in ${answer//,/ }; do
       case "$w" in
@@ -70,10 +86,16 @@ if [ ${#CHOSEN[@]} -eq 0 ]; then
   done
   if [ "$ASKED_DOCKER" = 0 ]; then
     default=y; if on_ubuntu_2604; then default=n; fi
-    if ask_yes "Build in the Docker \"safe build\"?" "$default"; then DOCKER=1; fi
+    if ask_yes "Build in the Docker \"safe build\"?" "$default" "Builds in a container: Ubuntu 26.04, no root, and this folder read-only except what the build writes.
+You need only Docker, on any system, and nothing is installed on this machine.
+No: builds directly here, which needs Ubuntu 26.04 and its packages (the script checks them first)."; then DOCKER=1; fi
   fi
-  if [ "$KEEP_BUILD" = 0 ] && ask_yes "Keep the build artifacts of the SDK packages?" n; then KEEP_BUILD=1; fi
-  if [ "$BUILD_ONAIR" = 0 ] && ask_yes "Do you want to build OnAir for these SDKs, after they are made?" n; then BUILD_ONAIR=1; fi
+  if [ "$KEEP_BUILD" = 0 ] && ask_yes "Keep the build artifacts of the SDK packages?" n "Yes keeps the unpacked SDKs in build/, and the build folders of libraries compiled in this run in cache/work/. Useful for finding out why a build failed.
+They take several GB per SDK. No deletes each one as soon as it is done with.
+The downloads and built libraries in cache/ and the tarballs always stay."; then KEEP_BUILD=1; fi
+  if [ "$BUILD_ONAIR" = 0 ] && ask_yes "Do you want to build OnAir for these SDKs, after they are made?" n "Yes checks out OnAir's $ONAIR_BRANCH branch and builds its installers with each SDK, into installers/.
+It takes about 15 to 20 minutes per platform on 8 CPUs, and it logs the commands and progress.
+No makes only the SDKs. You can build OnAir with them later: see README.md."; then BUILD_ONAIR=1; fi
 fi
 # each once, in the usual order
 ORDERED=()
@@ -107,7 +129,8 @@ is_skipped() { local s; for s in ${SKIP_SDK[@]+"${SKIP_SDK[@]}"}; do [ "$s" != "
 if [ "$IN_DOCKER" = 0 ] && [ -t 0 ]; then
   for a in "${ORDERED[@]}"; do
     if tarball_ok "$a"; then
-      if ask_yes "sdk_$a.tar.gz is already made. Skip building it?" y; then SKIP_SDK+=("$a"); fi
+      if ask_yes "sdk_$a.tar.gz is already made. Skip building it?" y "Its checksum is correct, so it is complete. Yes keeps it, and building OnAir uses it.
+No makes it again, for example after you changed the SDK's scripts or lock files: this script cannot see if the tarball is out of date."; then SKIP_SDK+=("$a"); fi
     elif [ -f "$ROOT/sdk_$a.tar.gz" ]; then
       echo "sdk_$a.tar.gz does not match SHA256SUMS: making it again"
     fi
@@ -269,7 +292,7 @@ build_onair() {
   printf '\nInstallers: %s\n' "$ROOT/installers"
 }
 
-mkdir -p "$BUILD" "$ROOT/cache"
+[ "$DRY" = 1 ] || mkdir -p "$BUILD" "$ROOT/cache"
 for a in "${ORDERED[@]}"; do
   if is_skipped "$a"; then printf '
 ==== SDK %s: already made, skipped
