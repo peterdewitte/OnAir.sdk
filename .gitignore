@@ -5,6 +5,7 @@
 /installers/
 /sdk_*.tar.gz
 /SHA256SUMS
+/SHA256SUMS.new
 *.tar.zst
 *.stage.*
 __pycache__/

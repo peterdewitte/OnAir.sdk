@@ -8,11 +8,11 @@
 #   --docker            build in the "safe" container: no root, no capabilities, this folder read-only except cache/ and build/
 #   --keep-sources      keep unpacked copies of the libraries' sources in kept_sources/ (default: no)
 #   --keep-build-artif  keep the build folders in build/ and cache/work/ (default: each is deleted as soon as it is done with)
-#   --build-onair       afterwards, check out OnAir and build its installers with these SDKs, into installers/ (a status table every 10 seconds)
+#   --build-onair       afterwards, check out OnAir and build its installers with these SDKs, into installers/
 #   --dry-run           print what would happen, build nothing
 #   -h, --help          this text
 #
-# cache/ (the downloaded packages and sources, the built libraries) is never deleted. To limit the CPUs, run it under taskset: a Docker build
+# An SDK whose tarball is already here, with the right checksum, need not be made again: on a terminal it asks. cache/ (the downloaded packages and sources, the built libraries) is never deleted. To limit the CPUs, run it under taskset: a Docker build
 # takes over the same CPUs.
 set -Eeuo pipefail
 export LC_ALL=C
@@ -20,7 +20,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD="$ROOT/build" IMAGE=onair-sdk-builder
 ALL=(windows linux_amd64 linux_arm64 macos_amd64 macos_arm64)
 DESC=("Windows x64" "Linux x86-64 (Ubuntu 26.04)" "Linux arm64 (Ubuntu 26.04, Raspberry Pi)" "macOS Intel" "macOS Apple silicon")
-CHOSEN=() DOCKER=0 KEEP_SOURCES=0 KEEP_BUILD=0 DRY=0 IN_DOCKER=0 ASKED_DOCKER=0 BUILD_ONAIR=0
+CHOSEN=() DOCKER=0 KEEP_SOURCES=0 KEEP_BUILD=0 DRY=0 IN_DOCKER=0 ASKED_DOCKER=0 BUILD_ONAIR=0 SKIP_SDK=()
 ONAIR_URL=${ONAIR_URL:-https://github.com/peterdewitte/OnAir.git} ONAIR_BRANCH=${ONAIR_BRANCH:-clang_and_packaging}   # (temporary: the patches for this SDK)
 
 usage() { sed -n '4,16p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -34,6 +34,7 @@ while [ $# -gt 0 ]; do
     --build-onair) BUILD_ONAIR=1;;
     --dry-run) DRY=1;;
     --in-docker) IN_DOCKER=1;;   # (the container's own run)
+    --skip-sdk) SKIP_SDK+=("$2"); shift;;   # (from the outer run to the container)
     -h|--help) usage; exit 0;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2;;
   esac
@@ -100,6 +101,19 @@ check_host() {
   echo "host tools: ok"
 }
 
+# ---- SDKs that are already made: ask, on a terminal ------------------------------------------------------------------------
+tarball_ok() { [ -f "$ROOT/sdk_$1.tar.gz" ] && [ -f "$ROOT/SHA256SUMS" ] && (cd "$ROOT" && grep -E "[ *]sdk_$1\.tar\.gz\$" SHA256SUMS | { command -v sha256sum >/dev/null && sha256sum -c --status - || shasum -a 256 -c --status -; }); }
+is_skipped() { local s; for s in ${SKIP_SDK[@]+"${SKIP_SDK[@]}"}; do [ "$s" != "$1" ] || return 0; done; return 1; }
+if [ "$IN_DOCKER" = 0 ] && [ -t 0 ]; then
+  for a in "${ORDERED[@]}"; do
+    if tarball_ok "$a"; then
+      if ask_yes "sdk_$a.tar.gz is already made. Skip building it?" y; then SKIP_SDK+=("$a"); fi
+    elif [ -f "$ROOT/sdk_$a.tar.gz" ]; then
+      echo "sdk_$a.tar.gz does not match SHA256SUMS: making it again"
+    fi
+  done
+fi
+
 if [ "$DOCKER" = 0 ] && [ "$IN_DOCKER" = 0 ]; then
   [ "$(uname -s)" = Linux ] || die "on $(uname -s) the SDK is made in Docker: use --docker"
   [ "$DRY" = 1 ] || command -v apt-get >/dev/null || die "this Linux has no apt-get, which the SDK's scripts use: use --docker"
@@ -110,7 +124,7 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum 
 finish() {   # the tarballs into this folder, with their checksums
   mkdir -p "$BUILD/out"
   local t; for t in "$BUILD"/out/sdk_*.tar.gz; do if [ -f "$t" ]; then mv -f "$t" "$ROOT/"; fi; done
-  if ls "$ROOT"/sdk_*.tar.gz >/dev/null 2>&1; then (cd "$ROOT" && sha256 sdk_*.tar.gz > SHA256SUMS && cat SHA256SUMS); fi
+  if ls "$ROOT"/sdk_*.tar.gz >/dev/null 2>&1; then (cd "$ROOT" && sha256 sdk_*.tar.gz > SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS && cat SHA256SUMS); fi
   if [ "$KEEP_BUILD" = 0 ]; then rm -rf "$BUILD"; fi
 }
 
@@ -131,13 +145,14 @@ if [ "$DOCKER" = 1 ] && [ "$IN_DOCKER" = 0 ]; then
   [ "$KEEP_SOURCES" = 0 ] || args+=(--keep-sources)
   [ "$KEEP_BUILD" = 0 ] || args+=(--keep-build-artif)
   [ "$BUILD_ONAIR" = 0 ] || args+=(--build-onair)
+  for a in ${SKIP_SDK[@]+"${SKIP_SDK[@]}"}; do args+=(--skip-sdk "$a"); done
   build=(docker build --platform linux/amd64 --build-arg "UID=$(id -u)" --build-arg "GID=$(id -g)" -t "$IMAGE" "$ROOT")
   # no root and no capabilities; this folder read-only, except what the build has to write. --platform: the SDK's tools run on Linux x86-64
   run=(docker run --rm --init --platform linux/amd64 --cap-drop=ALL --security-opt=no-new-privileges
        -v "$ROOT":/work:ro -v "$ROOT/cache":/work/cache -v "$BUILD":/work/build)
   [ "$KEEP_SOURCES" = 0 ] || run+=(-v "$ROOT/kept_sources":/work/kept_sources)
   [ "$BUILD_ONAIR" = 0 ] || run+=(-v "$ROOT/installers":/work/installers)
-  # in the foreground, attached to this terminal: the status stays in view, and Ctrl-C stops the build
+  # in the foreground, attached to this terminal: the log stays in view, and Ctrl-C stops the build
   [ ! -t 1 ] || run+=(-t); [ ! -t 0 ] || run+=(-i)
   cpus=$(sed -n 's/^Cpus_allowed_list:[[:space:]]*//p' /proc/self/status 2>/dev/null || true)
   [ -z "$cpus" ] || run+=("--cpuset-cpus=$cpus")   # (taskset's CPUs)
@@ -199,119 +214,67 @@ keep_sources() {   # unpacked as downloaded: the patches and what the build chan
   echo "sources kept in kept_sources/"
 }
 
-# ---- OnAir with these SDKs: each from its tarball, as a user would, with a status table ------------------------------------
+# ---- OnAir with these SDKs: each from its tarball, as a user would. Logged like the SDK: the compilers' output goes to a log, an error stops everything ------
 ONAIR=$BUILD/onair
-onair_name() { case "$1" in windows) echo "Windows";; linux_amd64) echo "Linux amd64";; linux_arm64) echo "Linux arm64";; macos_arm64) echo "macOS arm64";; macos_amd64) echo "macOS x86_64";; esac; }
-onair_set() { local f=$ONAIR/status/$1; shift; printf '%s\n' "$@" > "$f.new"; mv "$f.new" "$f"; }   # result, installer, start, end
-onair_cmd() { printf '  $ %s\n' "${2//$ROOT\//}" >> "$ONAIR/status/.commands"; }   # <arch> <command>: what ran, shown under the table
-onair_show() { onair_table "$@"; if [ -s "$ONAIR/status/.commands" ]; then echo; echo "Commands:"; cat "$ONAIR/status/.commands"; fi; }
 size_mb() { echo "$(( ($(stat -c %s "$1") + 524288) / 1048576 )) MB"; }
-
-onair_one() {   # <arch>: never stops the others
-  local arch=$1 d=$ONAIR/$1 start extra=() log=$ONAIR/$1.log rc=0
-  start=$(date +%s)
-  onair_set "$arch" Unpacking "" "$start" ""
-  rm -rf "$d"; mkdir -p "$d"
-  [ "$arch" != linux_arm64 ] || extra=(-DRPI_CPU=generic)   # any 64-bit ARM
-  printf '%s:\n' "$(onair_name "$arch")" >> "$ONAIR/status/.commands"
-  onair_cmd "$arch" "tar xzf $BUILD/out/sdk_$arch.tar.gz -C $d"
-  tar xzf "$BUILD/out/sdk_$arch.tar.gz" -C "$d" > "$log" 2>&1 || rc=$?
-  if [ "$rc" = 0 ]; then
-    onair_set "$arch" Configuring "" "$start" ""
-    (
-      # the steps of the README, in a shell of their own
-      onair_cmd "$arch" ". $d/environment_$arch.sh"
-      . "$d/environment_$arch.sh" >> "$log" 2>&1 || exit 1
-      export CCACHE_DISABLE=1
-      onair_cmd "$arch" "cmake -S $ONAIR/src -B $d/build -G Ninja -DCMAKE_BUILD_TYPE=Release${extra[*]:+ ${extra[*]}}"
-      cmake -S "$ONAIR/src" -B "$d/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "${extra[@]}" >> "$log" 2>&1 || exit 1
-      onair_set "$arch" Compiling "" "$start" ""
-      onair_cmd "$arch" "cmake --build $d/build --target package   # builds the programs, then packages them"
-      cmake --build "$d/build" --target package >> "$log" 2>&1
-    ) || rc=$?
-  fi
-  local inst="" f
-  if [ "$rc" = 0 ]; then
-    mkdir -p "$ROOT/installers"
-    for f in "$d/build/packages"/*.exe "$d/build/packages"/*.zip "$d/build/packages"/*.deb "$d/build/packages"/*.dmg; do
-      [ -f "$f" ] || continue
-      cp "$f" "$ROOT/installers/"
-      case "$f" in
-        *-setup.exe) inst+="${inst:+, }setup.exe $(size_mb "$f")";;
-        *.zip)       inst+="${inst:+, }zip $(size_mb "$f")";;
-        *.deb)       inst+="${inst:+, }deb $(size_mb "$f")";;
-        *.dmg)       inst+="${inst:+, }dmg $(size_mb "$f")";;
-      esac
-    done
-    [ -n "$inst" ] || rc=1
-  fi
-  if [ "$rc" = 0 ]; then
-    onair_cmd "$arch" "cp $d/build/packages/* $ROOT/installers/"
-    onair_set "$arch" Passed "$inst" "$start" "$(date +%s)"
-  else
-    mkdir -p "$ROOT/installers"; cp "$log" "$ROOT/installers/$arch-failed.log" 2>/dev/null || true
-    onair_set "$arch" Failed "see installers/$arch-failed.log" "$start" "$(date +%s)"
-    echo 1 >> "$ONAIR/status/.failed"
-  fi
-  if [ "$KEEP_BUILD" = 0 ]; then rm -rf "$d"; fi   # as soon as the installers are out
+show() { printf '  $ %s\n' "${1//$ROOT\//}"; }
+onair_failed() {   # <arch> <log>
+  mkdir -p "$ROOT/installers"; cp "$2" "$ROOT/installers/$1-failed.log" 2>/dev/null || true
+  echo "---- the end of the log (all of it: installers/$1-failed.log):" >&2; tail -40 "$2" >&2
+  die "OnAir failed for $1"
 }
+progress() { awk '/^\[[0-9]+\/[0-9]+\]/ { split(substr($1, 2, length($1) - 2), n, "/"); if (n[2] < 10) next; p = int(n[1] * 10 / n[2]) * 10; if (p > last) { last = p; printf "    %d%% (%d of %d)\n", p, n[1], n[2]; fflush() } }'; }
 
-onair_table() {   # <arch...>
-  local a result inst start end t step w1=14 w2=21 w3=45 w4=8 line
-  rule() { local l=$1 m=$2 r=$3 c; printf '%s' "$l"; for c in $w1 $w2 $w3 $w4; do printf '─%.0s' $(seq 1 $((c + 2))); [ "$c" = "$w4" ] && printf '%s\n' "$r" || printf '%s' "$m"; done; }
-  rule ┌ ┬ ┐
-  printf '│ %-*s │ %-*s │ %-*s │ %-*s │\n' $w1 Platform $w2 Result $w3 Installer $w4 Time
-  for a in "$@"; do
-    rule ├ ┼ ┤
-    { read -r result; read -r inst; read -r start; read -r end; } < "$ONAIR/status/$a"
-    t=""
-    if [ -n "$start" ]; then
-      t=$(( ${end:-$(date +%s)} - start ))
-      if [ "$t" -ge 60 ]; then t="$((t / 60)) min"; else t="$t s"; fi
-    fi
-    if [ "$result" = Compiling ]; then
-      step=$(tail -c 4096 "$ONAIR/$a.log" 2>/dev/null | grep -oE '^\[[0-9]+/[0-9]+\]' | tail -1 | tr -d '[]' || true)
-      if [ -n "$step" ]; then
-        if [ "${step%/*}" = "${step#*/}" ]; then result=Packaging; else result="Compiling $step"; fi
-      fi
-    fi
-    printf '│ %-*s │ %-*s │ %-*s │ %-*s │\n' $w1 "$(onair_name "$a")" $w2 "$result" $w3 "$inst" $w4 "$t"
+onair_one() {   # <arch>
+  local arch=$1 d=$ONAIR/$1 log=$ONAIR/$1.log start=$SECONDS extra=() sdk=$BUILD/out/sdk_$1.tar.gz
+  [ -f "$sdk" ] || sdk=$ROOT/sdk_$arch.tar.gz
+  [ -f "$sdk" ] || die "no sdk_$arch.tar.gz"
+  [ "$arch" != linux_arm64 ] || extra=(-DRPI_CPU=generic)   # any 64-bit ARM
+  printf '\n==== %s: OnAir for %s\n' "$(date +%H:%M:%S)" "$arch"
+  rm -rf "$d"; mkdir -p "$d"; : > "$log"; rm -f "$ROOT/installers/$arch-failed.log"
+  show "tar xzf $sdk -C $d"
+  tar xzf "$sdk" -C "$d" >> "$log" 2>&1 || onair_failed "$arch" "$log"
+  (
+    # the steps of the README, in a shell of their own
+    show ". $d/environment_$arch.sh"
+    . "$d/environment_$arch.sh" >> "$log" 2>&1
+    export CCACHE_DISABLE=1
+    show "cmake -S $ONAIR/src -B $d/build -G Ninja -DCMAKE_BUILD_TYPE=Release${extra[*]:+ ${extra[*]}}"
+    cmake -S "$ONAIR/src" -B "$d/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "${extra[@]}" >> "$log" 2>&1
+    show "cmake --build $d/build --target package"
+    cmake --build "$d/build" --target package 2>&1 | tee -a "$log" | progress
+  ) || onair_failed "$arch" "$log"
+  local inst="" f
+  mkdir -p "$ROOT/installers"
+  for f in "$d/build/packages"/*.exe "$d/build/packages"/*.zip "$d/build/packages"/*.deb "$d/build/packages"/*.dmg; do
+    [ -f "$f" ] || continue
+    show "cp $f $ROOT/installers/"
+    cp "$f" "$ROOT/installers/"
+    inst+="${inst:+, }$(basename "$f") $(size_mb "$f")"
   done
-  rule └ ┴ ┘
+  [ -n "$inst" ] || onair_failed "$arch" "$log"
+  if [ "$KEEP_BUILD" = 0 ]; then rm -rf "$d"; fi   # as soon as the installers are out
+  echo "---- $arch: $inst, $(( (SECONDS - start) / 60 )) min"
 }
 
 build_onair() {
-  local order=() a worker rc=0 n=0
-  for a in windows linux_amd64 linux_arm64 macos_arm64 macos_amd64; do
-    for c in "${ORDERED[@]}"; do [ "$c" != "$a" ] || order+=("$a"); done
-  done
-  printf '\n==== %s: OnAir (%s) with these SDKs\n' "$(date +%H:%M:%S)" "$ONAIR_BRANCH"
-  rm -rf "$ONAIR"; mkdir -p "$ONAIR/status"
-  printf 'OnAir:\n' >> "$ONAIR/status/.commands"
-  onair_cmd "" "git clone --depth 1 --branch $ONAIR_BRANCH $ONAIR_URL $ONAIR/src"
+  local a f
+  printf '\n==== %s: OnAir (%s)\n' "$(date +%H:%M:%S)" "$ONAIR_BRANCH"
+  rm -rf "$ONAIR"; mkdir -p "$ONAIR"
+  show "git clone --depth 1 --branch $ONAIR_BRANCH $ONAIR_URL $ONAIR/src"
   git clone -q --depth 1 --single-branch --branch "$ONAIR_BRANCH" "$ONAIR_URL" "$ONAIR/src" || die "cannot check out $ONAIR_BRANCH of $ONAIR_URL"
   grep -q ONAIR_SDK_PLATFORM "$ONAIR/src/CMakeLists.txt" || die "$ONAIR_BRANCH of $ONAIR_URL has no package target for this SDK yet"
-  for a in "${order[@]}"; do onair_set "$a" Queued "" "" ""; done
-  ( for a in "${order[@]}"; do onair_one "$a"; done ) &
-  worker=$!
-  local i
-  while kill -0 "$worker" 2>/dev/null; do
-    # on a terminal the table stays at the top of the screen; otherwise, in a log, one table after the other
-    [ ! -t 1 ] || printf '\033[H\033[2J'
-    onair_show "${order[@]}"
-    for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$worker" 2>/dev/null || break; sleep 1; done
-  done
-  wait "$worker" || rc=$?
-  [ ! -t 1 ] || printf '\033[H\033[2J'
-  onair_show "${order[@]}"
-  (cd "$ROOT/installers" && for f in *.exe *.zip *.deb *.dmg; do [ -f "$f" ] && echo "$f"; done | xargs -r sha256sum > SHA256SUMS) || true
-  if [ -s "$ONAIR/status/.failed" ]; then die "OnAir failed on some platforms: see the logs in installers/"; fi
-  [ "$rc" = 0 ] || die "the OnAir build stopped"
-  echo "Installers: $ROOT/installers"
+  for a in "${ORDERED[@]}"; do onair_one "$a"; done
+  (cd "$ROOT/installers" && for f in *.exe *.zip *.deb *.dmg; do if [ -f "$f" ]; then sha256 "$f"; fi; done > SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
+  printf '\nInstallers: %s\n' "$ROOT/installers"
 }
 
 mkdir -p "$BUILD" "$ROOT/cache"
-for a in "${ORDERED[@]}"; do make_one "$a"; done
+for a in "${ORDERED[@]}"; do
+  if is_skipped "$a"; then printf '
+==== SDK %s: already made, skipped
+' "$a"; else make_one "$a"; fi
+done
 [ "$DRY" = 1 ] && exit 0
 if [ "$KEEP_SOURCES" = 1 ]; then keep_sources; fi
 if [ "$BUILD_ONAIR" = 1 ]; then build_onair; fi
