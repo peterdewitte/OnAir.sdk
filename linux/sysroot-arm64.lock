@@ -2,6 +2,7 @@
 snapshot 20261107T182608Z
 asked libc6-dev libegl-dev libgcc-16-dev libgl-dev libstdc++-16-dev libwayland-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev zlib1g-dev
 minimum zlib1g-dev 1:1.3.dfsg+really1.3.1-1ubuntu3.2
+deb gcc-16-base 16-20260322-1ubuntu1 pool/main/g/gcc-16/gcc-16-base_16-20260322-1ubuntu1_arm64.deb 7aaed4a4fb1d47792c66e1323a6662ee1b184fb7993aacaa1cc82ba55a1716e0
 deb libasan8 16-20260322-1ubuntu1 pool/main/g/gcc-16/libasan8_16-20260322-1ubuntu1_arm64.deb ae30b45c86daf779ebaf53fcf9c37b091202cf547bab64c12895d377941e4547
 deb libatomic1 16-20260322-1ubuntu1 pool/main/g/gcc-16/libatomic1_16-20260322-1ubuntu1_arm64.deb b9b2c94062924229201e25b694536119b153146abb8f464e31afa9e422d07d22
 deb libc6 2.43-2ubuntu2.4 pool/main/g/glibc/libc6_2.43-2ubuntu2.4_arm64.deb 1652597c8c3419b298d8a87dd3d8eea1fdc5a1abd9bccb5a66b928f92ec463c9

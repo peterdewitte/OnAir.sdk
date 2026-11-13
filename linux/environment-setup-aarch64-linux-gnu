@@ -21,3 +21,12 @@ export PKG_CONFIG_PATH="" PKG_CONFIG_SYSROOT_DIR="$RPI_SYSROOT"
 export RUSTC="$RPI_NATIVE_SYSROOT/bin/rustc" CARGO="$RPI_NATIVE_SYSROOT/bin/cargo"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-clang CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu
 echo "Raspberry Pi 5 (Ubuntu 26.04 arm64) SDK: $RPI_SDK"
+# the parts of this SDK, their licences and where the licence texts are (LICENSES.txt); ONAIR_SDK_QUIET=1 leaves this out
+if [ -z "${ONAIR_SDK_QUIET:-}" ] && [ -f "$RPI_SDK/LICENSES.txt" ]; then
+  echo
+  cat "$RPI_SDK/LICENSES.txt"
+  echo
+  echo "Licence texts: in the folders above, relative to $RPI_SDK"
+  echo "  the standard texts (GPL, LGPL, Apache, MPL ...): $RPI_SDK/licenses/common-licenses/"
+  echo "  this list: $RPI_SDK/LICENSES.txt   (ONAIR_SDK_QUIET=1 before sourcing leaves it out)"
+fi

@@ -94,18 +94,42 @@ With an SDK sourced, OnAir's `cmake --build build --target package` builds the p
 ## What is in a tarball
 
 ```
-sysroot_<arch>/          the compiler and tools, the target system, OnAir's libraries, toolchain-*.cmake, licences
+sysroot_<arch>/          the compiler and tools, the target system, OnAir's libraries, toolchain-*.cmake
+sysroot_<arch>/LICENSES.txt   every part with its version, licence and the folder of its licence text
 environment_<arch>.sh    source this
 ```
 
-* **Compiled here, from pinned sources:** OnAir's 15 libraries (FFmpeg as LGPL, libusb, OpenSSL, GLFW, the radio libraries), and `dmg`, `hfsplus` and `rcodesign`.
+* **Compiled here, from pinned sources:** OnAir's 15 libraries (FFmpeg as LGPL, libusb, OpenSSL, GLFW, the radio libraries), and for macOS `dmg`, `hfsplus` and `rcodesign`.
 * **Prebuilt, from upstream:** clang, Rust, and the target system: MSYS2 packages for Windows, Ubuntu packages for Linux, Apple's SDK and conda-forge packages for macOS.
+* **Packaging tools, only for their platform:** `makensis` in the Windows SDK; `mkfs.hfsplus`, `hfsplus`, `dmg` and `rcodesign` in the macOS SDKs; none in the Linux SDKs (a `.deb` is made with the build machine's `dpkg-deb`). The GNU binutils for MinGW are only in the Windows SDK.
+
+## Licences
+
+Sourcing an environment script prints `LICENSES.txt`: each part of the SDK, its version, its licence and where its licence text is. `ONAIR_SDK_QUIET=1` before sourcing leaves the list out. The licence texts are in:
+
+| Folder in `sysroot_<arch>/` | What |
+|---|---|
+| `LICENSES.txt` | the list |
+| `licenses/common-licenses/` | the standard texts (GPL, LGPL, Apache, MPL ...) that Ubuntu's copyright files refer to |
+| `sysroots/x86_64-sdk-linux/share/licenses/` | LLVM, Rust, GNU binutils for MinGW |
+| `sysroots/x86_64-sdk-linux/pkgtools/share/licenses/` | the packaging tools |
+| `sysroots/x86_64-w64-mingw32/share/licenses/` | Windows: the MSYS2 packages and the libraries built from source |
+| `sysroots/<triple>/usr/share/licenses/` | Linux: the Ubuntu packages (their `copyright` files) |
+| `sysroots/<triple>/usr/local/share/licenses/` | Linux and macOS: the libraries built from source; macOS: the conda-forge packages |
+
+`common/make_licenses.py` writes the list at the end of every SDK build, and stops the build when a part has no licence text or no licence in `common/licenses.map`.
 
 ## Before you share a tarball
 
 **Do not publish the macOS tarballs.** They contain Apple's SDK, which Apple's terms do not allow redistributing and limit to Apple-branded computers. Each user should make their own with this script.
 
-The other tarballs also need licence work before they are shared: licence texts and the corresponding source of the GPL and LGPL parts. The scripts in this repository are fine to share.
+The Windows and Linux tarballs may be shared under the licences of their parts:
+
+* **The licence texts** are in the tarball (see [Licences](#licences)); keep them with it.
+* **The source of the GPL, LGPL and MPL parts** must be offered with the exact versions shipped: put it next to the tarball. That is the source archives in `cache/src/` (the libraries, with this repository's `sources/patches/`), the Ubuntu source packages of the `.deb` files in the Linux lock files and the MSYS2 source packages of the Windows lock file. This repository at the commit that made the tarball is the build scripts.
+* **`FTD3XX.dll`** in the Windows SDK is FTDI's proprietary D3XX library (LimeSDR-USB), under [FTDI's driver licence terms](https://ftdichip.com/driver-licence-terms-details/). Read them before sharing; the text is not in the tarball, because FTDI's site cannot be downloaded from a script. Save it as text in `common/licenses/ftdi/` and the next build includes it.
+
+The scripts in this repository are fine to share.
 
 ## Other documents
 

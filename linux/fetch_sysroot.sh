@@ -41,11 +41,12 @@ PACKAGES=(
 )
 # the libraries whose Ubuntu version is the SDK's minimum (recorded in the lock file; common/check_versions.py)
 MINIMUM=(zlib1g-dev)
-# runtime-only dependencies that linking does not need (drivers, data, tools); globs
+# runtime-only dependencies that linking does not need (drivers, data, tools); globs. (gcc-16-base is kept: it holds the
+# copyright file of every GCC runtime package, whose doc folders are links to it)
 EXCLUDE=('libgl1-mesa-dri' 'libglx-mesa0' 'libegl-mesa0' 'mesa-*' 'libllvm*' 'libgallium*' 'libvulkan1' 'mesa-vulkan-drivers'
          'debconf' 'debconf-2.0' 'dpkg' 'perl-base' 'perl' 'adduser' 'passwd' 'login' 'init-system-helpers' 'sensible-utils'
          'ucf' 'lsb-base' 'sysvinit-utils' 'libpam*' 'systemd' 'systemd-*' 'udev' 'libsystemd-shared' 'python3*'
-         'tzdata' 'coreutils' 'libc-bin' 'libc-dev-bin' 'rpcsvc-proto' 'gcc-16' 'gcc-16-base' 'cpp-16' 'binutils*' 'libx11-data'
+         'tzdata' 'coreutils' 'libc-bin' 'libc-dev-bin' 'rpcsvc-proto' 'gcc-16' 'cpp-16' 'binutils*' 'libx11-data'
          'xkb-data' 'libdrm-common' 'libwayland-bin' 'libgles*-mesa*' 'libwayland-egl-backend-dev' 'manpages*' 'install-info'
          'lib*-perl' 'libc-gconv-modules-extra' 'libasound2-data' 'xorg-sgml-doctools')
 SUITES=(resolute resolute-updates resolute-security)
@@ -146,9 +147,24 @@ mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 say "unpacking into $OUT"
 STAGE="$OUT.stage.$$"; rm -rf "$STAGE"; mkdir -p "$STAGE"
 trap 'rm -rf "$TMP" "$STAGE"' EXIT
+declare -A SRC_OF
 while read -r n v f s; do
   dpkg-deb -x "$CACHE/$(basename "$f")" "$STAGE"
-  if [ -f "$STAGE/usr/share/doc/$n/copyright" ]; then mkdir -p "$STAGE/usr/share/licenses/$n"; cp "$STAGE/usr/share/doc/$n/copyright" "$STAGE/usr/share/licenses/$n/"; fi
+  src=$(dpkg-deb -f "$CACHE/$(basename "$f")" Source); SRC_OF[$n]=${src%% *}; SRC_OF[$n]=${SRC_OF[$n]:-$n}
+done < "$TMP/closure"
+# usr/share/licenses/<package>/copyright for every package: its doc folder may be a link to another package's (the GCC
+# runtime -> gcc-16-base), cp follows it; a package without one (libffi-dev) gets the copyright of a package built from
+# the same source (libffi8)
+while read -r n v f s; do
+  c="$STAGE/usr/share/doc/$n/copyright"
+  if [ ! -f "$c" ]; then
+    c=""
+    for m in "${!SRC_OF[@]}"; do
+      if [ "${SRC_OF[$m]}" = "${SRC_OF[$n]}" ] && [ -f "$STAGE/usr/share/doc/$m/copyright" ]; then c="$STAGE/usr/share/doc/$m/copyright"; break; fi
+    done
+  fi
+  [ -n "$c" ] || die "$n: no copyright file (none in its package nor in another package of the source ${SRC_OF[$n]})"
+  mkdir -p "$STAGE/usr/share/licenses/$n"; cp "$c" "$STAGE/usr/share/licenses/$n/copyright"
 done < "$TMP/closure"
 # merged /usr (Ubuntu 26.04): files some packages still put in /lib, /lib64 go to usr/, and lib -> usr/lib
 for d in lib lib64; do

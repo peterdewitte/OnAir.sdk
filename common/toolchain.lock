@@ -2,6 +2,7 @@
 # resolved 2026-11-07T21:32:11Z; LLVM signed by key FFB3368980F3E6BB5737145A316C56D064CACBA5, Rust by 108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE
 llvm LLVM 23.1.5 LLVM-23.1.5-Linux-X64.tar.zst c3107384835f788768f614db610e87fba7077f125ca950eb02a78bab0a308065
 deb binutils-mingw-w64-x86-64 2.45.90.20260125-1ubuntu1+13.3 binutils-mingw-w64-x86-64_2.45.90.20260125-1ubuntu1+13.3_amd64.deb f835050ed5b7fedf8f3242610fda1eb55b5472b72624f9a88de90c610b465552
+deb binutils-mingw-w64-base 2.45.90.20260125-1ubuntu1+13.3 binutils-mingw-w64-base_2.45.90.20260125-1ubuntu1+13.3_amd64.deb f3dbbe4aec206d7078987c9ba3286df20a5fab4ed8c63b0f0d31969c26bdfcbf
 rust rustc 1.99.1 rustc-1.99.1-x86_64-unknown-linux-gnu.tar.xz 2ff05ff9c08a90861e7f6e4065b40a8b87463b4576186fd613871c3e37f2091f
 rust cargo 1.99.1 cargo-1.99.1-x86_64-unknown-linux-gnu.tar.xz 53f3521949404d595efb06a55c12c5658d4ed1c75566f33d3d514eaebe70bd8a
 rust rust-std 1.99.1 rust-std-1.99.1-x86_64-unknown-linux-gnu.tar.xz 109b074225bf5b9ea3820890876bfdf4ed161adbfaf94b2b4b5984c85ee5d958

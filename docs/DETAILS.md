@@ -118,8 +118,8 @@ cache/                       the downloads (llvm, msys2, rust, deb, ubuntu, appl
 ```
 
 `.gitignore` keeps all binaries out, so `git init && git add . && git commit` publishes the scripts and lock files only.
-The binaries are third-party software under their own licences (`sdk/SDK-MANIFEST.txt`; the libraries built from
-source put theirs in `share/licenses/<name>/` of the sysroot). **FFmpeg is built as LGPL** on every target (no
+The binaries are third-party software under their own licences: `LICENSES.txt` in the SDK lists every part with its
+licence and licence text (`common/make_licenses.py`, from `common/licenses.map`; see USAGE.md, "Licences"). **FFmpeg is built as LGPL** on every target (no
 `--enable-gpl`, `--enable-version3` or `--enable-nonfree`; `build_sources.sh` stops if `config.h` says otherwise, and
 writes FFmpeg's configuration to `share/licenses/ffmpeg/CONFIGURATION.txt`). librtlsdr is GPL-2.0+.
 
@@ -291,7 +291,7 @@ deployment target, libc++, ld64.lld). A universal binary: build both and join th
 
 ## 3c. The tools that make the packages
 
-`common/build_pkgtools.sh` (pinned by `common/pkgtools.lock`, run by `make_sdk.sh`) adds these to `sysroots/x86_64-sdk-linux/bin`, so a package needs nothing installed:
+`common/build_pkgtools.sh` (pinned by `common/pkgtools.lock`, run by `make_sdk.sh`) adds these to `sysroots/x86_64-sdk-linux/bin`, so a package needs nothing installed. Only the tools of the SDK's platform go in: `makensis` for Windows, the other four for macOS, none for Linux (OnAir's `deb.sh` uses the build machine's `dpkg-deb`):
 
 | Tool | For | From |
 |---|---|---|
@@ -300,7 +300,7 @@ deployment target, libc++, ld64.lld). A universal binary: build both and join th
 | `hfsplus`, `dmg` | fill the volume, compress the image | Mozilla's libdmg-hfsplus, built from source |
 | `rcodesign` | ad-hoc or Developer ID signing | apple-codesign (MPL-2.0), built with the SDK's cargo |
 
-The first build also needs `gcc`, `zlib1g-dev` and `liblzma-dev` on the build machine; the result is kept in `cache/built/`. OnAir's `tools/package/sdk/all.sh` uses them. `macho.py bundlecheck <app>` checks a signed app on Linux, but only a Mac shows that it really runs.
+The first macOS build also needs `gcc`, `zlib1g-dev` and `liblzma-dev` on the build machine; each platform's tools are kept in `cache/built/pkgtools-<platform>-<key>.tar.zst`. OnAir's `tools/package/sdk/all.sh` uses them. `macho.py bundlecheck <app>` checks a signed app on Linux, but only a Mac shows that it really runs.
 
 ## 4. Change or update the SDK
 

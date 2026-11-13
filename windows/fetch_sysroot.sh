@@ -32,6 +32,10 @@ PACKAGES=(
 )
 # ----------------------------------------------------------------------------------------------------------------------
 PFX=mingw-w64-ucrt-x86_64-
+# in the closure (the lock file) but not unpacked: only gcc.exe and the MSYS2 binutils (not shipped: clang and GNU ld from
+# Ubuntu are the compilers) need them, and nothing in the SDK links them. Leaving them out also leaves out their licences
+# (GPL-3 binutils, LGPL-3 gmp/mpfr/mpc).
+SKIP=(binutils gettext-runtime gmp isl mpc mpfr zstd)
 
 # ---- which package files go into the sysroot: the files a cross build needs, as paths relative to ucrt64/ (one per line on stdin, the kept ones on stdout):
 #   kept:     include/, lib/ (static and import libraries, pkgconfig, cmake, gcc's libgcc and C++ headers, plug-in DLLs),
@@ -179,7 +183,9 @@ say "unpacking into $OUT"
 # filter keeps are copied: some archives hold hard links to files the filter leaves out (gcc's liblto_plugin.dll).
 STAGE="$OUT.stage.$$"; rm -rf "$STAGE"; mkdir -p "$STAGE"
 trap 'rm -rf "$TMP" "$STAGE"' EXIT
+skipped() { local s; for s in "${SKIP[@]}"; do [ "$1" = "$PFX$s" ] && return 0; done; return 1; }
 for i in "${!PKG_NAME[@]}"; do
+  skipped "${PKG_NAME[$i]}" && continue
   tar -xf "$CACHE/${PKG_FILE[$i]}" -C "$STAGE" --exclude='.PKGINFO' --exclude='.MTREE' --exclude='.BUILDINFO' --exclude='.INSTALL'
 done
 [ -d "$STAGE/ucrt64" ] || die "the packages hold no ucrt64/ folder"
@@ -196,7 +202,7 @@ sysroot_relocate "$OUT"
   echo "gcc runtime: $(for i in "${!PKG_NAME[@]}"; do [ "${PKG_NAME[$i]}" = "${PFX}gcc" ] && echo "${PKG_NAME[$i]} ${PKG_VER[$i]}"; done)"
   echo "asked for:   $ASKED"
   echo
-  echo "packages (name version), the closure of the ones asked for:"
-  for i in "${!PKG_NAME[@]}"; do echo "${PKG_NAME[$i]} ${PKG_VER[$i]}"; done
+  echo "packages (name version), the closure of the ones asked for, without the ones not unpacked (${SKIP[*]}):"
+  for i in "${!PKG_NAME[@]}"; do skipped "${PKG_NAME[$i]}" || echo "${PKG_NAME[$i]} ${PKG_VER[$i]}"; done
 } > "$OUT/SYSROOT-MANIFEST.txt"
 say "sysroot: $OUT ($(du -sh "$OUT" | cut -f1))"

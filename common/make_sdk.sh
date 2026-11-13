@@ -12,8 +12,10 @@
 #   <sdk>/environment-setup-x86_64-apple-darwin  macOS x86_64 (Intel): likewise
 #   <sdk>/collect_dlls.sh                        Windows: the DLLs a built program needs
 #   <sdk>/collect_dylibs.sh                      macOS: the dylibs a built program needs
-#   <sdk>/sysroots/x86_64-sdk-linux/             native tools (common/fetch_toolchain.sh) and the tools that make the packages:
-#                                                makensis, mkfs.hfsplus, hfsplus, dmg, rcodesign (common/build_pkgtools.sh)
+#   <sdk>/sysroots/x86_64-sdk-linux/             native tools (common/fetch_toolchain.sh; the GNU binutils for mingw-w64 only
+#                                                with Windows) and the tools that make the packages, only for the targets'
+#                                                platforms: makensis (Windows); mkfs.hfsplus, hfsplus, dmg, rcodesign (macOS)
+#                                                (common/build_pkgtools.sh)
 #   <sdk>/sysroots/x86_64-w64-mingw32/           Windows target: MSYS2 UCRT64 packages (windows/fetch_sysroot.sh)
 #   <sdk>/sysroots/x86_64-linux-gnu/             Linux target: Ubuntu 26.04 packages (linux/fetch_sysroot.sh)
 #   <sdk>/sysroots/aarch64-linux-gnu/            Raspberry Pi 5 target: Ubuntu 26.04 arm64 packages (linux/fetch_sysroot.sh --arch arm64)
@@ -21,7 +23,9 @@
 #   + in every target sysroot: OnAir's own libraries built from source (sources/build_sources.sh, owner 2026-11-08):
 #     libusb, OpenSSL, GLFW, libhackrf, FFmpeg (LGPL), librtlsdr, libairspy, libxml2 (static), SoapySDR + SoapyRemote,
 #     libiio, libbladeRF, LimeSuite, Hamlib, libairspyhf (shared); the versions of OnAir's cross_deps_windows.sh
-#   <sdk>/locks/, SDK-MANIFEST.txt, LICENSE
+#   <sdk>/locks/, SDK-MANIFEST.txt, LICENSE (the scripts' licence)
+#   <sdk>/LICENSES.txt                           every part of the SDK with its version, licence and licence text
+#   <sdk>/licenses/common-licenses/              the standard licence texts (common/make_licenses.py)
 #
 # The runtimes and system libraries are binary packages of MSYS2, Ubuntu or conda-forge (Ubuntu 26.04's versions are
 # the minimum: common/check_versions.py); OnAir's own libraries are compiled from pinned source archives with the SDK's
@@ -60,12 +64,17 @@ fi
 mkdir -p "$OUT/sysroots" "$OUT/locks"; OUT="$(cd "$OUT" && pwd)"
 : > "$OUT/.made-by-make_sdk"
 
+TARGETS=() PLATFORMS=()   # the targets, one by one; the platforms whose packaging tools go in
+for t in windows linux rpi5 macos-arm64 macos-x86_64; do want $t && TARGETS+=($t); done
+want windows && PLATFORMS+=(windows); { want linux || want rpi5; } && PLATFORMS+=(linux); { want macos-arm64 || want macos-x86_64; } && PLATFORMS+=(macos)
+MINGW=(); want windows || MINGW=(--without-mingw)
+
 say "native tools"
-"$SCRIPT_DIR/common/fetch_toolchain.sh" -o "$OUT/sysroots/x86_64-sdk-linux" "${UPDATE[@]}"
+"$SCRIPT_DIR/common/fetch_toolchain.sh" -o "$OUT/sysroots/x86_64-sdk-linux" "${UPDATE[@]}" "${MINGW[@]}"
 install -m 644 "$SCRIPT_DIR/common/toolchain.lock" "$SCRIPT_DIR/LICENSE" "$OUT/"; mv "$OUT/toolchain.lock" "$OUT/locks/"
 install -m 644 "$SCRIPT_DIR/sources/sources.lock" "$OUT/locks/sources.lock"
 say "packaging tools"
-"$SCRIPT_DIR/common/build_pkgtools.sh" -o "$OUT/sysroots/x86_64-sdk-linux"
+"$SCRIPT_DIR/common/build_pkgtools.sh" -o "$OUT/sysroots/x86_64-sdk-linux" --platform "$(IFS=,; echo "${PLATFORMS[*]}")"
 install -m 644 "$SCRIPT_DIR/common/pkgtools.lock" "$OUT/locks/pkgtools.lock"
 
 if want windows; then
@@ -131,6 +140,9 @@ say "minimum versions: Ubuntu 26.04's (Windows and macOS may be newer)"
 python3 -I "$SCRIPT_DIR/common/check_versions.py" "$SCRIPT_DIR/linux/sysroot.lock" "$SCRIPT_DIR/windows/sysroot.lock" \
   "$SCRIPT_DIR/linux/sysroot-arm64.lock" "$SCRIPT_DIR/macos/sysroot-arm64.lock" "$SCRIPT_DIR/macos/sysroot-x86_64.lock" | tee "$OUT/VERSIONS.txt"
 
+say "licences"
+python3 -I "$SCRIPT_DIR/common/make_licenses.py" "$OUT" "$(IFS=,; echo "${TARGETS[*]}")"
+
 {
   echo "Cross SDK for Linux x86-64 build machines, made by make_sdk.sh"
   echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -145,12 +157,9 @@ python3 -I "$SCRIPT_DIR/common/check_versions.py" "$SCRIPT_DIR/linux/sysroot.loc
   done
   echo; sed 's/^/  /' "$OUT/VERSIONS.txt"
   echo
-  echo "The binaries in sysroots/ are third-party software under their own licences: LLVM (Apache-2.0 WITH LLVM-exception),"
-  echo "GNU binutils (GPL-3.0), Rust (MIT/Apache-2.0), the MSYS2 packages (x86_64-w64-mingw32/share/licenses), the Ubuntu"
-  echo "packages (x86_64-linux-gnu and aarch64-linux-gnu: usr/share/licenses), conda-forge's packages"
-  echo "(<arch>-apple-darwin/usr/local/share/licenses) and Apple's"
-  echo "macOS SDK (<arch>-apple-darwin: the macOS SDK and Xcode Agreement; not for redistribution, for use on Apple-branded computers)."
-  echo "The libraries built from source (sources/sources.lock) keep their own licences (sysroots/<target>/.../share/licenses/<name>);"
+  echo "The binaries in sysroots/ are third-party software under their own licences: LICENSES.txt lists every part with its"
+  echo "licence and the folder of its licence text. Apple's macOS SDK (<arch>-apple-darwin) is under the macOS SDK and Xcode"
+  echo "Agreement: not for redistribution, for use on Apple-branded computers."
   echo "FFmpeg is built as LGPL (no --enable-gpl, --enable-version3 or --enable-nonfree: checked by build_sources.sh)."
   echo "The scripts are GPL-3.0-or-later (LICENSE)."
 } > "$OUT/SDK-MANIFEST.txt"

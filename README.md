@@ -42,7 +42,7 @@ tar xzf sdk_windows.tar.gz
 
 The `environment_windows.sh` script configures the session for a Windows compilation. Do not forget the "." at the start of the command. It actually matters.
 
-The script has now configured the shell for the SDK.
+The script has now configured the shell for the SDK. It also prints every part of the SDK with its licence, and where the licence texts are (`sysroot_windows/LICENSES.txt`; `ONAIR_SDK_QUIET=1` leaves the list out).
 
 ## 3. Build OnAir and make the installers
 

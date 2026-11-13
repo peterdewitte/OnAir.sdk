@@ -7,20 +7,23 @@
 #              release keys. Only the tools a cross build uses are kept (TOOLS below), not the whole 5 GB; for macOS
 #              also ld64.lld and the Mach-O tools (lipo, install-name-tool, otool, libtool, dsymutil).
 #   deb/       Ubuntu packages (DEBS below), fetched with apt-get download (checked by apt) and unpacked, not installed:
-#              the GNU binutils for mingw-w64 (x86_64-w64-mingw32-ld, -dlltool, -objdump ...) for Windows
+#              the GNU binutils for mingw-w64 (x86_64-w64-mingw32-ld, -dlltool, -objdump ...) for Windows; left out
+#              with --without-mingw (an SDK without Windows needs no GNU tools)
 #   rust/      rustc and cargo with the standard libraries of the targets (Linux x86-64 and aarch64, x86_64-pc-windows-gnu,
 #              aarch64-apple-darwin, x86_64-apple-darwin), from static.rust-lang.org, GPG-checked against the Rust release
 #              key pinned below
 #   bin/       relative symlinks to all of these: the one folder to put on PATH
+#   share/licenses/  the licences of these tools: llvm (kept in common/licenses: the release has none), rust, binutils-mingw-w64
 #
 # Nothing is built or installed in the system; the folder can be moved. Reproducible: the files and their sha256 go into
 # a lock file (toolchain.lock); later runs check against it. Change a version below and run with --update.
 #
-# Usage:  ./fetch_toolchain.sh [-o OUTDIR] [--lock FILE] [--cache DIR] [--update]
+# Usage:  ./fetch_toolchain.sh [-o OUTDIR] [--lock FILE] [--cache DIR] [--update] [--without-mingw]
 #   -o OUTDIR    default: sdk/sysroots/x86_64-sdk-linux in the repository (replaced if it holds TOOLCHAIN-MANIFEST.txt)
 #   --lock FILE  default: common/toolchain.lock (next to this script)
 #   --cache DIR  default: cache/ in the repository
 #   --update     use the versions below (and the Ubuntu packages apt offers now) and rewrite the lock file
+#   --without-mingw  do not install the GNU binutils for mingw-w64 (still checked against the lock file)
 # Needs: Ubuntu (apt-get download, dpkg-deb), curl, tar, zstd, xz, gpg, gpgv, sha256sum.
 set -Eeuo pipefail
 export LC_ALL=C
@@ -28,7 +31,7 @@ export LC_ALL=C
 # ---- versions ---------------------------------------------------------------------------------------------------------
 LLVM_VERSION=23.1.5
 RUST_VERSION=1.99.1
-DEBS=(binutils-mingw-w64-x86-64)   # Ubuntu packages; their programs go into bin/
+DEBS=(binutils-mingw-w64-x86-64 binutils-mingw-w64-base)   # Ubuntu packages; their programs go into bin/ (-base: the copyright file)
 # the LLVM tools kept (with what their symlinks point to); clang-scan-deps: CMake's C++20 module scanning with Ninja
 TOOLS=(clang clang++ clang-cpp "clang-${LLVM_VERSION%%.*}" clang-scan-deps lld ld.lld
        llvm-ar llvm-ranlib llvm-dlltool llvm-nm llvm-objdump llvm-objcopy llvm-strip llvm-readobj
@@ -47,13 +50,14 @@ RUST_FILES=(rustc-$RUST_VERSION-x86_64-unknown-linux-gnu.tar.xz cargo-$RUST_VERS
             rust-std-$RUST_VERSION-aarch64-unknown-linux-gnu.tar.xz)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; ROOT="$(dirname "$SCRIPT_DIR")"
-OUT="$ROOT/sdk/sysroots/x86_64-sdk-linux" LOCK="$SCRIPT_DIR/toolchain.lock" CACHE="$ROOT/cache" UPDATE=0
+OUT="$ROOT/sdk/sysroots/x86_64-sdk-linux" LOCK="$SCRIPT_DIR/toolchain.lock" CACHE="$ROOT/cache" UPDATE=0 MINGW=1
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) OUT="$2"; shift 2;;
     --lock) LOCK="$2"; shift 2;;
     --cache) CACHE="$2"; shift 2;;
     --update) UPDATE=1; shift;;
+    --without-mingw) MINGW=0; shift;;
     -h|--help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0;;
     *) echo "unknown argument $1 (see --help)" >&2; exit 2;;
   esac
@@ -160,14 +164,27 @@ members+=("$top/lib/clang/${LLVM_VERSION%%.*}/include")   # (the release tarball
 tar -I 'zstd -d --long=31' -xf "$L" -C "$OUT/llvm" --strip-components=1 "${members[@]}" 2>"$TMP/tar.log" \
   || { cat "$TMP/tar.log" >&2; die "unpacking LLVM failed (a tool in TOOLS is not in this release?)"; }
 
-say "unpacking ${DEBS[*]}"
-for pkg in "${DEBS[@]}"; do dpkg-deb -x "${DEB_PATH[$pkg]}" "$OUT/deb"; done
-rm -rf "$OUT/deb/usr/share/lintian" "$OUT/deb/usr/share/doc" "$OUT/deb/usr/share/man"
+mkdir -p "$OUT/share/licenses/llvm"; cp "$SCRIPT_DIR/licenses/llvm/LICENSE.TXT" "$OUT/share/licenses/llvm/"
+if [ "$MINGW" = 1 ]; then
+  say "unpacking ${DEBS[*]}"
+  for pkg in "${DEBS[@]}"; do dpkg-deb -x "${DEB_PATH[$pkg]}" "$OUT/deb"; done
+  # (binutils-mingw-w64-x86-64's doc folder is a link to binutils-mingw-w64-base's, which holds the copyright file)
+  mkdir -p "$OUT/share/licenses/binutils-mingw-w64"
+  cp "$OUT/deb/usr/share/doc/binutils-mingw-w64-base/copyright" "$OUT/share/licenses/binutils-mingw-w64/"
+  rm -rf "$OUT/deb/usr/share/lintian" "$OUT/deb/usr/share/doc" "$OUT/deb/usr/share/man"
+else
+  rmdir "$OUT/deb"
+fi
 
 say "unpacking Rust"
 for f in "${RUST_FILES[@]}"; do
   mkdir -p "$TMP/rust"; tar -xJf "$CACHE/rust/$f" -C "$TMP/rust"
   d="$TMP/rust/${f%.tar.xz}"
+  mkdir -p "$OUT/share/licenses/rust"
+  case "$f" in
+    rustc-*) cp "$d/COPYRIGHT" "$d/LICENSE-APACHE" "$d/LICENSE-MIT" "$OUT/share/licenses/rust/";;
+    cargo-*) cp "$d/LICENSE-THIRD-PARTY" "$OUT/share/licenses/rust/cargo-LICENSE-THIRD-PARTY";;
+  esac
   for c in $(cat "$d/components"); do                 # what the component's install.sh would copy, without running it
     (cd "$d/$c" && tar --exclude=manifest.in -cf - .) | tar -C "$OUT/rust" -xf -
   done
@@ -177,7 +194,7 @@ rm -rf "$OUT/rust/share/doc" "$OUT/rust/share/man" "$OUT/rust/etc"
 
 # bin/: relative symlinks, so the folder can move
 for t in "${TOOLS[@]}"; do ln -s "../llvm/bin/$t" "$OUT/bin/$t"; done
-for t in "$OUT"/deb/usr/bin/*; do ln -s "../deb/usr/bin/$(basename "$t")" "$OUT/bin/$(basename "$t")"; done
+[ "$MINGW" = 0 ] || for t in "$OUT"/deb/usr/bin/*; do ln -s "../deb/usr/bin/$(basename "$t")" "$OUT/bin/$(basename "$t")"; done
 for t in "$OUT"/rust/bin/*; do [ "$(basename "$t")" = cargo ] || ln -s "../rust/bin/$(basename "$t")" "$OUT/bin/$(basename "$t")"; done
 # cargo runs the first rustc on PATH unless RUSTC says otherwise: this cargo always uses the SDK's rustc (it has the
 # x86_64-pc-windows-gnu standard library), also when the build was configured with only the toolchain file
@@ -212,10 +229,10 @@ CFG
   echo "Native (Linux x86-64) tools of the cross SDK, made by fetch_toolchain.sh"
   echo "date:     $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "LLVM:     $LLVM_VERSION ($LLVM_FILE, signed by $LLVM_SIGNER; licence Apache-2.0 WITH LLVM-exception)"
-  for pkg in "${DEBS[@]}"; do echo "Ubuntu:   $pkg ${DEB_VER[$pkg]} ($(basename "${DEB_PATH[$pkg]}"))"; done
+  [ "$MINGW" = 0 ] || for pkg in "${DEBS[@]}"; do echo "Ubuntu:   $pkg ${DEB_VER[$pkg]} ($(basename "${DEB_PATH[$pkg]}"))"; done
   echo "Rust:     $("$OUT/rust/bin/rustc" --version 2>/dev/null || echo "$RUST_VERSION") with x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, x86_64-pc-windows-gnu, aarch64-apple-darwin, x86_64-apple-darwin"
 } > "$OUT/TOOLCHAIN-MANIFEST.txt"
 "$OUT/bin/clang" --version | head -1 >/dev/null || die "the unpacked clang does not run on this machine"
-"$OUT/bin/x86_64-w64-mingw32-ld" --version >/dev/null || die "the unpacked x86_64-w64-mingw32-ld does not run on this machine"
+[ "$MINGW" = 0 ] || "$OUT/bin/x86_64-w64-mingw32-ld" --version >/dev/null || die "the unpacked x86_64-w64-mingw32-ld does not run on this machine"
 "$OUT/bin/rustc" --version >/dev/null || die "the unpacked rustc does not run on this machine"
 say "native tools: $OUT ($(du -sh "$OUT" | cut -f1))"
