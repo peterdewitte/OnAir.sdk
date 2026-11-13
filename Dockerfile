@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The machine the SDK is made on, for build_sdk.sh --docker and build_sdk.bat: Ubuntu 26.04, pinned by digest, with what the SDK's scripts need.
-# Nothing from this folder goes into the image (see .dockerignore): the scripts are mounted read-only at run time.
+# Nothing from this folder goes into the image (see .dockerignore): build_sdk.sh is mounted read-only at run time, and it checks out
+# OnAir, whose tools/sdk makes the SDK, into build/ (or --onair mounts a checkout read-only).
 FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 ARG UID=1000

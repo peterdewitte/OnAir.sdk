@@ -117,7 +117,7 @@ Sourcing an environment script prints `LICENSES.txt`: each part of the SDK, its 
 | `sysroots/<triple>/usr/share/licenses/` | Linux: the Ubuntu packages (their `copyright` files) |
 | `sysroots/<triple>/usr/local/share/licenses/` | Linux and macOS: the libraries built from source; macOS: the conda-forge packages |
 
-`common/make_licenses.py` writes the list at the end of every SDK build, and stops the build when a part has no licence text or no licence in `common/licenses.map`.
+OnAir's `tools/sdk/common/make_licenses.py` writes the list at the end of every SDK build, and stops the build when a part has no licence text or no licence in `tools/sdk/common/licenses.map`.
 
 ## Before you share a tarball
 
@@ -126,8 +126,8 @@ Sourcing an environment script prints `LICENSES.txt`: each part of the SDK, its 
 The Windows and Linux tarballs may be shared under the licences of their parts:
 
 * **The licence texts** are in the tarball (see [Licences](#licences)); keep them with it.
-* **The source of the GPL, LGPL and MPL parts** must be offered with the exact versions shipped: put it next to the tarball. That is the source archives in `cache/src/` (the libraries, with this repository's `sources/patches/`), the Ubuntu source packages of the `.deb` files in the Linux lock files and the MSYS2 source packages of the Windows lock file. This repository at the commit that made the tarball is the build scripts.
-* **`FTD3XX.dll`** in the Windows SDK is FTDI's proprietary D3XX library (LimeSDR-USB), under [FTDI's driver licence terms](https://ftdichip.com/driver-licence-terms-details/). Read them before sharing; the text is not in the tarball, because FTDI's site cannot be downloaded from a script. Save it as text in `common/licenses/ftdi/` and the next build includes it.
+* **The source of the GPL, LGPL and MPL parts** must be offered with the exact versions shipped: put it next to the tarball. That is the source archives in `cache/src/` (the libraries, with OnAir's `tools/sdk/sources/patches/`), the Ubuntu source packages of the `.deb` files in the Linux lock files and the MSYS2 source packages of the Windows lock file. OnAir's `tools/sdk` at the commit that made the tarball is the build scripts.
+* **`FTD3XX.dll`** in the Windows SDK is FTDI's proprietary D3XX library (LimeSDR-USB), under [FTDI's driver licence terms](https://ftdichip.com/driver-licence-terms-details/). Read them before sharing; the text is not in the tarball, because FTDI's site cannot be downloaded from a script. Save it as text in OnAir's `tools/sdk/common/licenses/ftdi/` and the next build includes it.
 
 The scripts in this repository are fine to share.
 

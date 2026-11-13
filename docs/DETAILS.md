@@ -2,6 +2,8 @@
 
 **Note:** this is the long description written while the SDK grew: its design, the sources of every part, how to build OnAir with it, and the history. It describes one SDK with all targets in one folder. `build_sdk.sh` now makes one SDK per platform, each with its own compiler and sysroot, by running the inner step `common/make_sdk.sh --target <one>`. For how to make and use the SDK, see [../README.md](../README.md).
 
+**Where the scripts are:** since November 2026 the scripts named here (`common/`, `sources/`, `windows/`, `linux/`, `macos/`) are in OnAir, in [`tools/sdk/`](https://github.com/peterdewitte/OnAir/tree/feature_clang_sdk/tools/sdk): the paths below are relative to that folder. `build_sdk.sh` checks out OnAir and runs them; in OnAir they are also a CMake project with one target per SDK.
+
 # Cross SDK for building OnAir for Windows x64, Linux x86-64, Raspberry Pi 5 and macOS (arm64 and Intel)
 
 A Yocto-style SDK for a Linux x86-64 build machine (Ubuntu 26.04). It is one folder with:

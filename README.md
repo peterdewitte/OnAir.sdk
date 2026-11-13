@@ -29,6 +29,13 @@ On Windows, you can also use the untested `build_sdk.bat`.
 
 With Docker you need only Docker. Without it, on Ubuntu 26.04, the script checks the host tools first and tells you which packages to install with `apt`.
 
+The scripts that make an SDK are in OnAir, in [`tools/sdk/`](https://github.com/peterdewitte/OnAir/tree/feature_clang_sdk/tools/sdk). `build_sdk.sh` checks out OnAir's `feature_clang_sdk` branch for them (`--onair <dir>` uses a checkout you have). In OnAir they are also a CMake project, with one target per SDK and a cache that makes an SDK again only when one of its inputs changed:
+
+```bash
+cmake -S OnAir/tools/sdk -B build-sdk -G Ninja
+cmake --build build-sdk --target sdk_windows    # build-sdk/sdk_windows.tar.gz
+```
+
 ## 2. Install an SDK
 
 On Linux x86-64 (Ubuntu 26.04, WSL or a container):

@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # build_sdk.sh - make the cross SDKs. Each platform is made on its own, with its own compiler, into sdk_<arch>.tar.gz in this folder:
-# sysroot_<arch>/ and environment_<arch>.sh. Without arguments it asks what to build.
+# sysroot_<arch>/ and environment_<arch>.sh. Without arguments it asks what to build. The scripts that make an SDK are in OnAir
+# (tools/sdk, also a CMake project there): this script checks out OnAir and runs them.
 #
 #   --windows --linux_amd64 --linux_arm64 --macos_amd64 --macos_arm64    the SDKs to make
 #   --docker            build in the "safe" container: no root, no capabilities, this folder read-only except cache/ and build/
 #   --keep-sources      keep unpacked copies of the libraries' sources in kept_sources/ (default: no)
 #   --keep-build-artif  keep the build folders in build/ and cache/work/ (default: each is deleted as soon as it is done with)
-#   --build-onair       afterwards, check out OnAir and build its installers with these SDKs, into installers/
+#   --build-onair       afterwards, build OnAir's installers with these SDKs, into installers/
+#   --onair DIR         an OnAir checkout to use (default: check out $ONAIR_BRANCH of $ONAIR_URL into build/onair/src)
 #   --dry-run           print what would happen, build nothing
 #   -h, --help          this text
 #
@@ -20,10 +22,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BUILD="$ROOT/build" IMAGE=onair-sdk-builder
 ALL=(windows linux_amd64 linux_arm64 macos_amd64 macos_arm64)
 DESC=("Windows x64" "Linux x86-64 (Ubuntu 26.04)" "Linux arm64 (Ubuntu 26.04, Raspberry Pi)" "macOS Intel" "macOS Apple silicon")
-CHOSEN=() DOCKER=0 KEEP_SOURCES=0 KEEP_BUILD=0 DRY=0 IN_DOCKER=0 ASKED_DOCKER=0 BUILD_ONAIR=0 SKIP_SDK=()
+ONAIR_SRC="" CHOSEN=() DOCKER=0 KEEP_SOURCES=0 KEEP_BUILD=0 DRY=0 IN_DOCKER=0 ASKED_DOCKER=0 BUILD_ONAIR=0 SKIP_SDK=()
 ONAIR_URL=${ONAIR_URL:-https://github.com/peterdewitte/OnAir.git} ONAIR_BRANCH=${ONAIR_BRANCH:-feature_clang_sdk}   # (temporary: the patches for this SDK, until they are in adswill/OnAir)
 
-usage() { sed -n '4,16p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '4,18p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "error: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,6 +34,7 @@ while [ $# -gt 0 ]; do
     --keep-sources) KEEP_SOURCES=1;;
     --keep-build-artif) KEEP_BUILD=1;;
     --build-onair) BUILD_ONAIR=1;;
+    --onair) [ -d "${2:-}/tools/sdk" ] || die "--onair: ${2:-} is not an OnAir checkout with tools/sdk"; ONAIR_SRC=$(cd "$2" && pwd -P); shift;;
     --dry-run) DRY=1;;
     --in-docker) IN_DOCKER=1;;   # (the container's own run)
     --skip-sdk) SKIP_SDK+=("$2"); shift;;   # (from the outer run to the container)
@@ -102,26 +105,6 @@ ORDERED=()
 for a in "${ALL[@]}"; do for c in "${CHOSEN[@]}"; do [ "$c" != "$a" ] || { ORDERED+=("$a"); break; }; done; done
 
 # ---- the host tools: all at once, and what to install for them ------------------------------------------------------------
-check_host() {
-  local missing=() c
-  need() { command -v "$1" >/dev/null || missing+=("$2"); }
-  need_file() { [ -e "$1" ] || missing+=("$2"); }
-  need cmake cmake; need ninja ninja-build; need pkg-config pkgconf
-  need curl curl; need_file /etc/ssl/certs/ca-certificates.crt ca-certificates
-  need zstd zstd; need xz xz-utils; need bzip2 bzip2; need unzip unzip; need pigz pigz
-  need gpg gpg; need gpg-agent gpg-agent; need gpgv gpgv
-  need python3 python3; need make make; need perl perl; need nasm nasm; need patch patch
-  need wayland-scanner libwayland-bin
-  [ "$BUILD_ONAIR" = 0 ] || need git git
-  need gcc gcc; need g++ g++; need_file /usr/include/stdio.h libc6-dev; need_file /usr/include/zlib.h zlib1g-dev; need_file /usr/include/lzma.h liblzma-dev
-  if [ ${#missing[@]} -gt 0 ]; then
-    echo "error: this machine lacks host tools to make the SDK. Install them with:" >&2
-    echo "  sudo apt install ${missing[*]}" >&2
-    echo "Or build in the container, where you need only Docker: ./build_sdk.sh --docker" >&2
-    exit 1
-  fi
-  echo "host tools: ok"
-}
 
 # ---- SDKs that are already made: ask, on a terminal ------------------------------------------------------------------------
 tarball_ok() { [ -f "$ROOT/sdk_$1.tar.gz" ] && [ -f "$ROOT/SHA256SUMS" ] && (cd "$ROOT" && grep -E "[ *]sdk_$1\.tar\.gz\$" SHA256SUMS | { command -v sha256sum >/dev/null && sha256sum -c --status - || shasum -a 256 -c --status -; }); }
@@ -141,7 +124,7 @@ if [ "$DOCKER" = 0 ] && [ "$IN_DOCKER" = 0 ]; then
   [ "$(uname -s)" = Linux ] || die "on $(uname -s) the SDK is made in Docker: use --docker"
   [ "$DRY" = 1 ] || command -v apt-get >/dev/null || die "this Linux has no apt-get, which the SDK's scripts use: use --docker"
 fi
-if [ "$DOCKER" = 0 ] && [ "$DRY" = 0 ]; then check_host; fi
+if [ "$DOCKER" = 0 ] && [ "$DRY" = 0 ] && [ -z "$ONAIR_SRC" ]; then command -v git >/dev/null || die "git is missing (sudo apt install git), or build with --docker"; fi
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 finish() {   # the tarballs into this folder, with their checksums
@@ -168,6 +151,7 @@ if [ "$DOCKER" = 1 ] && [ "$IN_DOCKER" = 0 ]; then
   [ "$KEEP_SOURCES" = 0 ] || args+=(--keep-sources)
   [ "$KEEP_BUILD" = 0 ] || args+=(--keep-build-artif)
   [ "$BUILD_ONAIR" = 0 ] || args+=(--build-onair)
+  [ -z "$ONAIR_SRC" ] || args+=(--onair /onair)
   for a in ${SKIP_SDK[@]+"${SKIP_SDK[@]}"}; do args+=(--skip-sdk "$a"); done
   build=(docker build --platform linux/amd64 --build-arg "UID=$(id -u)" --build-arg "GID=$(id -g)" -t "$IMAGE" "$ROOT")
   # no root and no capabilities; this folder read-only, except what the build has to write. --platform: the SDK's tools run on Linux x86-64
@@ -175,6 +159,7 @@ if [ "$DOCKER" = 1 ] && [ "$IN_DOCKER" = 0 ]; then
        -v "$ROOT":/work:ro -v "$ROOT/cache":/work/cache -v "$BUILD":/work/build)
   [ "$KEEP_SOURCES" = 0 ] || run+=(-v "$ROOT/kept_sources":/work/kept_sources)
   [ "$BUILD_ONAIR" = 0 ] || run+=(-v "$ROOT/installers":/work/installers)
+  [ -z "$ONAIR_SRC" ] || run+=(-v "$ONAIR_SRC":/onair:ro)
   # in the foreground, attached to this terminal: the log stays in view, and Ctrl-C stops the build
   [ ! -t 1 ] || run+=(-t); [ ! -t 0 ] || run+=(-i)
   cpus=$(sed -n 's/^Cpus_allowed_list:[[:space:]]*//p' /proc/self/status 2>/dev/null || true)
@@ -193,37 +178,15 @@ fi
 # ---- one SDK ------------------------------------------------------------------------------------------------------------
 
 make_one() {
-  local arch=$1 target triple dir tarball start=$SECONDS
-  case "$arch" in
-    windows)     target=windows      triple=x86_64-w64-mingw32;;
-    linux_amd64) target=linux        triple=x86_64-linux-gnu;;
-    linux_arm64) target=rpi5         triple=aarch64-linux-gnu;;
-    macos_amd64) target=macos-x86_64 triple=x86_64-apple-darwin;;
-    macos_arm64) target=macos-arm64  triple=arm64-apple-darwin;;
-  esac
-  dir=$BUILD/sdk_$arch/sysroot_$arch
-  tarball=$BUILD/out/sdk_$arch.tar.gz
+  local arch=$1 tarball=$BUILD/out/sdk_$1.tar.gz start=$SECONDS
   printf '\n==== %s: SDK %s\n' "$(date +%H:%M:%S)" "$arch"
-  if [ "$DRY" = 1 ]; then echo "common/make_sdk.sh -o $dir --target $target; tar -> sdk_$arch.tar.gz"; return; fi
-  rm -rf "$BUILD/sdk_$arch"; mkdir -p "$BUILD/sdk_$arch" "$BUILD/out"
+  if [ "$DRY" = 1 ]; then echo "tools/sdk/make_tarball.sh $arch -o build/out --cache cache"; return; fi
   local keep=(); [ "$KEEP_BUILD" = 0 ] || keep=(--keep-work)
-  "$ROOT/common/make_sdk.sh" -o "$dir" --target "$target" "${keep[@]}"
-  rm -f "$dir/.made-by-make_sdk"
-  cat > "$BUILD/sdk_$arch/environment_$arch.sh" <<ENV
-# Source this file, in bash or zsh, to build for $arch in this shell:  . ./environment_$arch.sh
-if [ -n "\${BASH_SOURCE:-}" ]; then _sdk_self=\${BASH_SOURCE[0]}; elif [ -n "\${ZSH_VERSION:-}" ]; then _sdk_self=\${(%):-%x}; else _sdk_self=\$0; fi
-. "\$(cd "\$(dirname "\$_sdk_self")" && pwd)/sysroot_$arch/environment-setup-$triple"
-unset _sdk_self
-ENV
-  chmod 644 "$BUILD/sdk_$arch/environment_$arch.sh"
-  local gz=gzip; command -v pigz >/dev/null && gz=pigz
-  tar -C "$BUILD/sdk_$arch" -I "$gz" -cf "$tarball.part" "sysroot_$arch" "environment_$arch.sh"
-  mv "$tarball.part" "$tarball"
-  if [ "$KEEP_BUILD" = 0 ]; then rm -rf "$BUILD/sdk_$arch"; fi   # as soon as it is in the tarball
+  "$SDK_SRC/make_tarball.sh" "$arch" -o "$BUILD/out" --cache "$ROOT/cache" --work "$BUILD/sdk_$arch" "${keep[@]}"
   echo "---- $arch: sdk_$arch.tar.gz, $(du -h "$tarball" | cut -f1), $((SECONDS - start)) s"
 }
 
-keep_sources() {   # unpacked as downloaded: the patches and what the build changes are in sources/ and sources/build_sources.sh
+keep_sources() {   # unpacked as downloaded: the patches and what the build changes are in OnAir's tools/sdk/sources/
   local kind name ver file rest d
   while read -r kind name ver file rest; do
     [ "$kind" = src ] || continue
@@ -232,8 +195,8 @@ keep_sources() {   # unpacked as downloaded: the patches and what the build chan
       *.zip) unzip -q "$ROOT/cache/src/$file" -d "$d";;
       *) tar -xf "$ROOT/cache/src/$file" -C "$d" --strip-components=1;;
     esac
-  done < "$ROOT/sources/sources.lock"
-  cp -R "$ROOT/sources/patches" "$ROOT/kept_sources/"
+  done < "$SDK_SRC/sources/sources.lock"
+  cp -R "$SDK_SRC/sources/patches" "$ROOT/kept_sources/"
   echo "sources kept in kept_sources/"
 }
 
@@ -262,8 +225,8 @@ onair_one() {   # <arch>
     show ". $d/environment_$arch.sh"
     . "$d/environment_$arch.sh" >> "$log" 2>&1
     export CCACHE_DISABLE=1
-    show "cmake -S $ONAIR/src -B $d/build -G Ninja -DCMAKE_BUILD_TYPE=Release${extra[*]:+ ${extra[*]}}"
-    cmake -S "$ONAIR/src" -B "$d/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "${extra[@]}" >> "$log" 2>&1
+    show "cmake -S $ONAIR_SRC -B $d/build -G Ninja -DCMAKE_BUILD_TYPE=Release${extra[*]:+ ${extra[*]}}"
+    cmake -S "$ONAIR_SRC" -B "$d/build" -G Ninja -DCMAKE_BUILD_TYPE=Release "${extra[@]}" >> "$log" 2>&1
     show "cmake --build $d/build --target package"
     cmake --build "$d/build" --target package 2>&1 | tee -a "$log" | progress
   ) || onair_failed "$arch" "$log"
@@ -280,19 +243,30 @@ onair_one() {   # <arch>
   echo "---- $arch: $inst, $(( (SECONDS - start) / 60 )) min"
 }
 
+# OnAir: its tools/sdk makes the SDKs, and --build-onair builds it. Checked out once per run, unless --onair names a checkout.
+get_onair() {
+  if [ -z "$ONAIR_SRC" ]; then
+    ONAIR_SRC=$ONAIR/src
+    printf '\n==== %s: OnAir (%s)\n' "$(date +%H:%M:%S)" "$ONAIR_BRANCH"
+    rm -rf "$ONAIR_SRC"; mkdir -p "$ONAIR"
+    show "git clone --depth 1 --branch $ONAIR_BRANCH $ONAIR_URL $ONAIR_SRC"
+    git clone -q --depth 1 --single-branch --branch "$ONAIR_BRANCH" "$ONAIR_URL" "$ONAIR_SRC" || die "cannot check out $ONAIR_BRANCH of $ONAIR_URL"
+  fi
+  SDK_SRC=$ONAIR_SRC/tools/sdk
+  [ -x "$SDK_SRC/make_tarball.sh" ] || die "$ONAIR_SRC has no tools/sdk/make_tarball.sh: an OnAir from before the SDK's scripts moved there"
+  local git=(); [ "$BUILD_ONAIR" = 0 ] || git=(--git)
+  "$SDK_SRC/check_host.sh" "${git[@]}" || die "install the host tools above, or build with --docker"
+}
+
 build_onair() {
   local a f
-  printf '\n==== %s: OnAir (%s)\n' "$(date +%H:%M:%S)" "$ONAIR_BRANCH"
-  rm -rf "$ONAIR"; mkdir -p "$ONAIR"
-  show "git clone --depth 1 --branch $ONAIR_BRANCH $ONAIR_URL $ONAIR/src"
-  git clone -q --depth 1 --single-branch --branch "$ONAIR_BRANCH" "$ONAIR_URL" "$ONAIR/src" || die "cannot check out $ONAIR_BRANCH of $ONAIR_URL"
-  grep -q ONAIR_SDK_PLATFORM "$ONAIR/src/CMakeLists.txt" || die "$ONAIR_BRANCH of $ONAIR_URL has no package target for this SDK yet"
+  grep -q ONAIR_SDK_PLATFORM "$ONAIR_SRC/CMakeLists.txt" || die "$ONAIR_SRC has no package target for this SDK yet"
   for a in "${ORDERED[@]}"; do onair_one "$a"; done
   (cd "$ROOT/installers" && for f in *.exe *.zip *.deb *.dmg; do if [ -f "$f" ]; then sha256 "$f"; fi; done > SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
   printf '\nInstallers: %s\n' "$ROOT/installers"
 }
 
-[ "$DRY" = 1 ] || mkdir -p "$BUILD" "$ROOT/cache"
+[ "$DRY" = 1 ] || { mkdir -p "$BUILD" "$ROOT/cache"; get_onair; }
 for a in "${ORDERED[@]}"; do
   if is_skipped "$a"; then printf '
 ==== SDK %s: already made, skipped
