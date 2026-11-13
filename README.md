@@ -46,10 +46,10 @@ The script has now configured the shell for the SDK. It also prints every part o
 
 ## 3. Build OnAir and make the installers
 
-Work in the shell from step 2. For now, the patches for this SDK are on a temporary branch: [peterdewitte/OnAir, `clang_and_packaging`](https://github.com/peterdewitte/OnAir/tree/clang_and_packaging).
+Work in the shell from step 2. For now, the patches for this SDK are on a branch of a fork, until they are merged into OnAir: [peterdewitte/OnAir, `feature_clang_sdk`](https://github.com/peterdewitte/OnAir/tree/feature_clang_sdk).
 
 ```bash
-git clone -b clang_and_packaging https://github.com/peterdewitte/OnAir.git OnAir
+git clone -b feature_clang_sdk https://github.com/peterdewitte/OnAir.git OnAir
 cmake -S OnAir -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build                    # OnAir and its tests
 cmake --build build --target package   # the installer, in build/packages

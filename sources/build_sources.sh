@@ -319,12 +319,19 @@ step ffmpeg; unpack ffmpeg ffmpeg
 case "$OS" in windows) FFOS=mingw32;; linux) FFOS=linux;; macos) FFOS=darwin;; esac
 ff=(--prefix="$LPFX" --enable-cross-compile --target-os=$FFOS --arch=$CPU --cc="$CC" --cxx="$CXX" --objcc="$CC" --ar="$AR" --nm="$NM"
     --ranlib="$RANLIB" --strip="$STRIP" --host-cc="$HOSTCC" --x86asmexe=nasm --pkg-config=pkg-config
-    --enable-static --disable-shared --disable-programs --disable-doc --disable-debug --disable-avdevice --disable-network)
-[ "$OS" = windows ] || ff+=(--enable-pic)
+    --enable-static --disable-shared --disable-programs --disable-doc --disable-debug)
+# As OnAir's release builds (tools/package/cross_deps_windows.sh, build_ffmpeg_static.sh): the network with FFmpeg's own protocols
+# (no TLS library) for the video generator's RTMP server input (core/src/tv/videogen_rtmp.cpp); on Windows libavdevice with only
+# the DirectShow input, for the cameras and capture cards (core/src/audio/videoin_ffmpeg.cpp); no libavdevice on Linux and macOS.
+if [ "$OS" = windows ]; then ff+=(--disable-indevs --enable-indev=dshow --disable-outdevs); else ff+=(--disable-avdevice --enable-pic); fi
 mkdir -p "$B/ffmpeg"
 (cd "$B/ffmpeg" && run ffmpeg "$S/ffmpeg/configure" "${ff[@]}" --extra-cflags="$BASE_CFLAGS" --extra-ldflags="$BASE_LDFLAGS" && run ffmpeg make -j"$JOBS")
 for c in GPL VERSION3 NONFREE; do
   grep -qE "^#define CONFIG_$c 0" "$B/ffmpeg/config.h" || die "FFmpeg is not the LGPL build (CONFIG_$c is not 0): GPL, version3 and nonfree are not allowed"
+done
+want_ff=(RTMP_PROTOCOL TCP_PROTOCOL FLV_DEMUXER AC3_ENCODER); [ "$OS" = windows ] && want_ff+=(DSHOW_INDEV)
+for c in "${want_ff[@]}"; do
+  grep -qE "^#define CONFIG_$c 1" "$B/ffmpeg/config_components.h" || die "FFmpeg has no CONFIG_$c (OnAir needs it: RTMP input, AC-3 encoder, Windows cameras)"
 done
 (cd "$B/ffmpeg" && run ffmpeg make install DESTDIR="$DEST")
 license ffmpeg "$S/ffmpeg/LICENSE.md" "$S/ffmpeg/COPYING.LGPLv2.1"

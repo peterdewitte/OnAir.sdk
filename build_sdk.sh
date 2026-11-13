@@ -21,7 +21,7 @@ BUILD="$ROOT/build" IMAGE=onair-sdk-builder
 ALL=(windows linux_amd64 linux_arm64 macos_amd64 macos_arm64)
 DESC=("Windows x64" "Linux x86-64 (Ubuntu 26.04)" "Linux arm64 (Ubuntu 26.04, Raspberry Pi)" "macOS Intel" "macOS Apple silicon")
 CHOSEN=() DOCKER=0 KEEP_SOURCES=0 KEEP_BUILD=0 DRY=0 IN_DOCKER=0 ASKED_DOCKER=0 BUILD_ONAIR=0 SKIP_SDK=()
-ONAIR_URL=${ONAIR_URL:-https://github.com/peterdewitte/OnAir.git} ONAIR_BRANCH=${ONAIR_BRANCH:-clang_and_packaging}   # (temporary: the patches for this SDK)
+ONAIR_URL=${ONAIR_URL:-https://github.com/peterdewitte/OnAir.git} ONAIR_BRANCH=${ONAIR_BRANCH:-feature_clang_sdk}   # (temporary: the patches for this SDK, until they are in adswill/OnAir)
 
 usage() { sed -n '4,16p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { echo "error: $*" >&2; exit 1; }

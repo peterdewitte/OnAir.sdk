@@ -40,7 +40,7 @@ every target too: **static** libraries are linked into the program, **shared** o
 | OpenSSL | 3.6.5 | static | Apache-2.0 |
 | GLFW | 3.4 | static (Linux: X11 and Wayland, loaded at run time) | Zlib |
 | libhackrf | 2024.02.1 | static | BSD-3-Clause |
-| FFmpeg | 8.0 (libavcodec 62), no libavdevice, no network | static, **LGPL** (`CONFIG_GPL/VERSION3/NONFREE 0`, checked) | LGPL-2.1+ |
+| FFmpeg | 8.0 (libavcodec 62), network (RTMP); libavdevice with the DirectShow input on Windows only | static, **LGPL** (`CONFIG_GPL/VERSION3/NONFREE 0`, checked) | LGPL-2.1+ |
 | librtlsdr (RTL-SDR Blog) | 1.4.0 (commit aed0ea1) | static, and shared for OnAir's native driver (`librtlsdr.dll`, `librtlsdr.so.0`, `librtlsdr.0.dylib`) | GPL-2.0+ |
 | libairspy | 1.0.10 + OnAir's close-order fix | static, and shared (`libairspy.dll`, `.so.0`, `.0.dylib`) | BSD-3-Clause |
 | SoapySDR | 0.8.1 (+ the SoapyRemote 0.5.3 client module) | shared | BSL-1.0 |
