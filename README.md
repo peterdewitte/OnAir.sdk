@@ -36,6 +36,18 @@ cmake -S OnAir/tools/sdk -B build-sdk -G Ninja
 cmake --build build-sdk --target sdk_windows    # build-sdk/sdk_windows.tar.gz
 ```
 
+### Without questions (scripts, CI, AI assistants such as Claude)
+
+`build_sdk.sh` asks only on a terminal. Elsewhere, name what to build; it stops with an `error:` line and a non-zero exit code when something is wrong:
+
+```bash
+./build_sdk.sh --windows --linux_amd64                   # the SDKs, into this folder
+./build_sdk.sh --linux_amd64 --build-onair               # also OnAir's installer, into installers/
+./build_sdk.sh --windows --onair ~/src/OnAir             # with a local OnAir checkout instead of cloning one
+```
+
+The first run downloads about 3 GB and takes 5 to 6 minutes per SDK (about 1 minute later, with the libraries in `cache/`); run it in the background and follow its log. The full instructions, also for building and testing OnAir with an SDK in a non-interactive shell, are in OnAir's [`tools/sdk/README.md`](https://github.com/peterdewitte/OnAir/blob/feature_clang_sdk/tools/sdk/README.md).
+
 ## 2. Install an SDK
 
 On Linux x86-64 (Ubuntu 26.04, WSL or a container):
